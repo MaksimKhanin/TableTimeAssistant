@@ -11,7 +11,7 @@
   "dependencies": {
     "react": "18.2.0",
     "react-native": "0.73.6",
-    "llama.rn": "^0.11.6",
+    "llama.rn": "^0.12.4",
     "@react-navigation/native": "^6.1.17",
     "@react-navigation/native-stack": "^6.9.26",
     "react-native-screens": "^3.31.1",
