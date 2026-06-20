@@ -17,6 +17,7 @@ class Adventure(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     characters = relationship("Character", back_populates="adventure", cascade="all, delete-orphan")
+    npcs = relationship("Npc", back_populates="adventure", cascade="all, delete-orphan")
     messages = relationship("Message", back_populates="adventure", cascade="all, delete-orphan")
 
 
@@ -49,6 +50,26 @@ class Character(Base):
     status = Column(String(50), default="alive")  # alive, unconscious, dead
 
     adventure = relationship("Adventure", back_populates="characters")
+
+
+class Npc(Base):
+    __tablename__ = "npcs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    adventure_id = Column(Integer, ForeignKey("adventures.id"), nullable=False)
+    name = Column(String(100), nullable=False)
+    role = Column(String(100), default="")          # злодей, союзник, торговец...
+    personality = Column(Text, default="")          # характер, манера речи
+    voice_style = Column(Text, default="")          # как говорит
+    max_hp = Column(Integer, default=10)
+    current_hp = Column(Integer, default=10)
+    armor_class = Column(Integer, default=10)
+    attack_bonus = Column(Integer, default=0)
+    damage_dice = Column(String(20), default="1d6")
+    is_enemy = Column(Integer, default=0)           # 1 = враг, 0 = союзник/нейтральный
+    status = Column(String(50), default="alive")
+
+    adventure = relationship("Adventure", back_populates="npcs")
 
 
 class Message(Base):

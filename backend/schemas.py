@@ -32,12 +32,47 @@ class CharacterOut(CharacterCreate):
         from_attributes = True
 
 
+class NpcCreate(BaseModel):
+    name: str
+    role: str = ""
+    personality: str = ""
+    voice_style: str = ""
+    max_hp: int = 10
+    armor_class: int = 10
+    attack_bonus: int = 0
+    damage_dice: str = "1d6"
+    is_enemy: int = 0
+
+
+class NpcOut(NpcCreate):
+    id: int
+    adventure_id: int
+    current_hp: int
+    status: str
+
+    class Config:
+        from_attributes = True
+
+
+class NpcRollRequest(BaseModel):
+    npc_id: int
+    roll_type: str          # attack, damage, d20, d6, ...
+    target_ac: Optional[int] = None
+    damage_dice: Optional[str] = None
+
+
+class NpcHPUpdateRequest(BaseModel):
+    npc_id: int
+    delta: int
+
+
 class AdventureCreate(BaseModel):
     title: str
     description: str
     gm_role: str = "Dungeon Master"
     player_count: int = Field(ge=1, le=4)
     characters: list[CharacterCreate]
+    npcs: list[NpcCreate] = []
 
 
 class AdventureOut(BaseModel):
@@ -49,6 +84,7 @@ class AdventureOut(BaseModel):
     status: str
     created_at: datetime
     characters: list[CharacterOut]
+    npcs: list[NpcOut]
 
     class Config:
         from_attributes = True

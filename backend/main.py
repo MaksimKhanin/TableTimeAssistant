@@ -53,6 +53,11 @@ def create_adventure(data: schemas.AdventureCreate, db: Session = Depends(get_db
         char.current_hp = char.max_hp
         db.add(char)
 
+    for n in data.npcs:
+        npc = models.Npc(adventure_id=adventure.id, **n.model_dump())
+        npc.current_hp = npc.max_hp
+        db.add(npc)
+
     db.commit()
     db.refresh(adventure)
     return adventure
@@ -93,7 +98,50 @@ def get_messages(adventure_id: int, db: Session = Depends(get_db)):
     )
 
 
-# ── Dice Rolls ────────────────────────────────────────────────────────────────
+# ── Player Dice Rolls ─────────────────────────────────────────────────────────
+
+def _resolve_char_roll(char: models.Character, roll_type: str, target_ac: int | None, damage_dice: str | None) -> tuple[str, dict]:
+    if roll_type == "initiative":
+        r = dnd.roll_initiative(char.dexterity)
+        text = dnd.format_roll_result(
+            {"die": r - dnd.modifier_from_stat(char.dexterity), "bonus": dnd.modifier_from_stat(char.dexterity), "total": r},
+            f"Инициатива {char.name}",
+        )
+        return text, {"type": "initiative", "total": r}
+
+    if roll_type == "attack":
+        r = dnd.roll_attack(char.attack_bonus)
+        hit = target_ac is None or r["total"] >= target_ac
+        text = dnd.format_roll_result(r, f"Атака {char.name}")
+        if target_ac is not None:
+            text += f" vs КД {target_ac} → {'**ПОПАДАНИЕ**' if hit else 'промах'}"
+        return text, {**r, "hit": hit}
+
+    if roll_type == "damage":
+        dice = damage_dice or char.damage_dice
+        r = dnd.roll_damage(dice, dnd.modifier_from_stat(char.strength))
+        return dnd.format_roll_result(r, f"Урон {char.name}"), r
+
+    if roll_type.startswith("save_"):
+        stat_map = {
+            "save_str": char.strength, "save_dex": char.dexterity,
+            "save_con": char.constitution, "save_int": char.intelligence,
+            "save_wis": char.wisdom, "save_cha": char.charisma,
+        }
+        stat = stat_map.get(roll_type, char.strength)
+        dc = target_ac or 12
+        r = dnd.roll_saving_throw(stat, dc)
+        name = roll_type.replace("save_", "").upper()
+        text = (
+            f"**Спасбросок {name} {char.name}**: 🎲 d20={r['die']} + {r['modifier']} = **{r['total']}**"
+            f" vs DC {dc} → {'✅ Успех' if r['success'] else '❌ Провал'}"
+        )
+        return text, r
+
+    sides = int(roll_type.replace("d", "") or 20)
+    val = dnd.roll(sides)[0]
+    return f"🎲 d{sides} = **{val}**", {"total": val}
+
 
 @app.post("/api/adventures/{adventure_id}/roll")
 def dice_roll(adventure_id: int, req: schemas.DiceRollRequest, db: Session = Depends(get_db)):
@@ -101,57 +149,59 @@ def dice_roll(adventure_id: int, req: schemas.DiceRollRequest, db: Session = Dep
     if not char or char.adventure_id != adventure_id:
         raise HTTPException(404, "Персонаж не найден")
 
+    result_text, roll_data = _resolve_char_roll(char, req.roll_type, req.target_ac, req.damage_dice)
+
+    db.add(models.Message(
+        adventure_id=adventure_id, role="dice",
+        content=result_text, player_name=char.name, metadata_=roll_data,
+    ))
+    db.commit()
+    return {"result": result_text, "data": roll_data}
+
+
+# ── NPC Dice Rolls ────────────────────────────────────────────────────────────
+
+@app.post("/api/adventures/{adventure_id}/npc-roll")
+def npc_dice_roll(adventure_id: int, req: schemas.NpcRollRequest, db: Session = Depends(get_db)):
+    npc = db.get(models.Npc, req.npc_id)
+    if not npc or npc.adventure_id != adventure_id:
+        raise HTTPException(404, "NPC не найден")
+
+    roll_type = req.roll_type
+    target_ac = req.target_ac
     result_text = ""
     roll_data = {}
 
-    if req.roll_type == "initiative":
-        r = dnd.roll_initiative(char.dexterity)
-        result_text = dnd.format_roll_result({"die": r - dnd.modifier_from_stat(char.dexterity), "bonus": dnd.modifier_from_stat(char.dexterity), "total": r}, f"Инициатива {char.name}")
-        roll_data = {"type": "initiative", "total": r}
-
-    elif req.roll_type == "attack":
-        r = dnd.roll_attack(char.attack_bonus)
-        hit = req.target_ac is None or r["total"] >= req.target_ac
-        result_text = dnd.format_roll_result(r, f"Атака {char.name}")
-        if req.target_ac is not None:
-            result_text += f" vs КД {req.target_ac} → {'**ПОПАДАНИЕ**' if hit else 'промах'}"
+    if roll_type == "attack":
+        r = dnd.roll_attack(npc.attack_bonus)
+        hit = target_ac is None or r["total"] >= target_ac
+        result_text = dnd.format_roll_result(r, f"Атака {npc.name}")
+        if target_ac is not None:
+            result_text += f" vs КД {target_ac} → {'**ПОПАДАНИЕ**' if hit else 'промах'}"
         roll_data = {**r, "hit": hit}
 
-    elif req.roll_type == "damage":
-        dice = req.damage_dice or char.damage_dice
-        str_mod = dnd.modifier_from_stat(char.strength)
-        r = dnd.roll_damage(dice, str_mod)
-        result_text = dnd.format_roll_result(r, f"Урон {char.name}")
+    elif roll_type == "damage":
+        dice = req.damage_dice or npc.damage_dice
+        r = dnd.roll_damage(dice)
+        result_text = dnd.format_roll_result(r, f"Урон {npc.name}")
         roll_data = r
 
-    elif req.roll_type.startswith("save_"):
-        stat_map = {
-            "save_str": char.strength, "save_dex": char.dexterity,
-            "save_con": char.constitution, "save_int": char.intelligence,
-            "save_wis": char.wisdom, "save_cha": char.charisma,
-        }
-        stat = stat_map.get(req.roll_type, char.strength)
-        dc = req.target_ac or 12
-        r = dnd.roll_saving_throw(stat, dc)
-        name = req.roll_type.replace("save_", "").upper()
-        result_text = f"**Спасбросок {name} {char.name}**: 🎲 d20={r['die']} + {r['modifier']} = **{r['total']}** vs DC {dc} → {'✅ Успех' if r['success'] else '❌ Провал'}"
-        roll_data = r
+    elif roll_type == "initiative":
+        val = dnd.roll(20)[0]
+        result_text = f"**Инициатива {npc.name}**: 🎲 d20 = **{val}**"
+        roll_data = {"type": "initiative", "total": val}
+
     else:
-        sides = int(req.roll_type.replace("d", "") or 20)
-        r = dnd.roll(sides)[0]
-        result_text = f"🎲 d{sides} = **{r}**"
-        roll_data = {"total": r}
+        sides = int(roll_type.replace("d", "") or 20)
+        val = dnd.roll(sides)[0]
+        result_text = f"🎲 {npc.name} d{sides} = **{val}**"
+        roll_data = {"total": val}
 
-    msg = models.Message(
-        adventure_id=adventure_id,
-        role="dice",
-        content=result_text,
-        player_name=char.name,
-        metadata_=roll_data,
-    )
-    db.add(msg)
+    db.add(models.Message(
+        adventure_id=adventure_id, role="dice",
+        content=result_text, player_name=npc.name, metadata_=roll_data,
+    ))
     db.commit()
-
     return {"result": result_text, "data": roll_data}
 
 
@@ -164,12 +214,21 @@ def update_hp(adventure_id: int, req: schemas.HPUpdateRequest, db: Session = Dep
         raise HTTPException(404, "Персонаж не найден")
 
     char.current_hp = max(0, min(char.max_hp, char.current_hp + req.delta))
-    if char.current_hp == 0:
-        char.status = "unconscious"
-    else:
-        char.status = "alive"
+    char.status = "unconscious" if char.current_hp == 0 else "alive"
     db.commit()
     return {"character_id": char.id, "name": char.name, "current_hp": char.current_hp, "max_hp": char.max_hp, "status": char.status}
+
+
+@app.post("/api/adventures/{adventure_id}/npc-hp")
+def update_npc_hp(adventure_id: int, req: schemas.NpcHPUpdateRequest, db: Session = Depends(get_db)):
+    npc = db.get(models.Npc, req.npc_id)
+    if not npc or npc.adventure_id != adventure_id:
+        raise HTTPException(404, "NPC не найден")
+
+    npc.current_hp = max(0, min(npc.max_hp, npc.current_hp + req.delta))
+    npc.status = "dead" if npc.current_hp == 0 else "alive"
+    db.commit()
+    return {"npc_id": npc.id, "name": npc.name, "current_hp": npc.current_hp, "max_hp": npc.max_hp, "status": npc.status}
 
 
 # ── LLM Config ────────────────────────────────────────────────────────────────
@@ -204,19 +263,31 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
             await websocket.close()
             return
 
-        # Build initial context
-        chars = [
-            {
-                "name": c.name, "race": c.race, "char_class": c.char_class,
-                "level": c.level, "current_hp": c.current_hp, "max_hp": c.max_hp,
-                "armor_class": c.armor_class, "abilities": c.abilities, "background": c.background,
-            }
-            for c in adventure.characters
-        ]
+        def build_context() -> list[dict]:
+            db.expire_all()
+            chars = [
+                {
+                    "name": c.name, "race": c.race, "char_class": c.char_class,
+                    "level": c.level, "current_hp": c.current_hp, "max_hp": c.max_hp,
+                    "armor_class": c.armor_class, "abilities": c.abilities, "background": c.background,
+                }
+                for c in adventure.characters
+            ]
+            npcs_data = [
+                {
+                    "name": n.name, "role": n.role, "personality": n.personality,
+                    "voice_style": n.voice_style, "current_hp": n.current_hp,
+                    "max_hp": n.max_hp, "armor_class": n.armor_class, "is_enemy": n.is_enemy,
+                }
+                for n in adventure.npcs
+            ]
+            return chars, npcs_data
 
-        system_prompt = llm_client.build_system_prompt(adventure.description, adventure.gm_role, chars)
+        chars, npcs_data = build_context()
+        system_prompt = llm_client.build_system_prompt(
+            adventure.description, adventure.gm_role, chars, npcs_data
+        )
 
-        # Load existing history
         history = db.query(models.Message).filter(
             models.Message.adventure_id == adventure_id,
             models.Message.role.in_(["user", "assistant"]),
@@ -226,33 +297,32 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
         for h in history:
             messages.append({"role": h.role, "content": h.content})
 
-        # If no history, trigger opening narration
         if not history:
             await websocket.send_json({"type": "thinking"})
             full_response = ""
             async for chunk in llm_client.stream_response(messages):
                 full_response += chunk
                 await websocket.send_json({"type": "chunk", "content": chunk})
-
             await websocket.send_json({"type": "done"})
 
-            msg = models.Message(
-                adventure_id=adventure_id,
-                role="assistant",
-                content=full_response,
-            )
-            db.add(msg)
+            db.add(models.Message(adventure_id=adventure_id, role="assistant", content=full_response))
             db.commit()
             messages.append({"role": "assistant", "content": full_response})
 
-        # Refresh character HP context
-        def get_hp_context() -> str:
+        def get_state_context() -> str:
             db.expire_all()
-            chars_fresh = db.query(models.Character).filter(
-                models.Character.adventure_id == adventure_id
-            ).all()
-            lines = [f"{c.name}: {c.current_hp}/{c.max_hp} ХП [{c.status}]" for c in chars_fresh]
-            return "Текущее состояние персонажей:\n" + "\n".join(lines)
+            char_lines = [
+                f"{c.name}: {c.current_hp}/{c.max_hp} ХП [{c.status}]"
+                for c in adventure.characters
+            ]
+            npc_lines = [
+                f"{n.name} ({'враг' if n.is_enemy else 'союзник'}): {n.current_hp}/{n.max_hp} ХП [{n.status}]"
+                for n in adventure.npcs
+            ]
+            parts = ["[Состояние отряда]"] + char_lines
+            if npc_lines:
+                parts += ["[NPC]"] + npc_lines
+            return "\n".join(parts)
 
         while True:
             data = await websocket.receive_json()
@@ -264,34 +334,23 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
                 if not content:
                     continue
 
-                # Save user message
-                user_msg = models.Message(
-                    adventure_id=adventure_id,
-                    role="user",
-                    content=content,
-                    player_name=player_name,
-                )
-                db.add(user_msg)
+                db.add(models.Message(
+                    adventure_id=adventure_id, role="user",
+                    content=content, player_name=player_name,
+                ))
                 db.commit()
 
-                # Add HP context + user message
-                hp_ctx = get_hp_context()
-                messages.append({"role": "user", "content": f"[{player_name}]: {content}\n\n{hp_ctx}"})
+                state = get_state_context()
+                messages.append({"role": "user", "content": f"[{player_name}]: {content}\n\n{state}"})
 
                 await websocket.send_json({"type": "thinking"})
                 full_response = ""
                 async for chunk in llm_client.stream_response(messages):
                     full_response += chunk
                     await websocket.send_json({"type": "chunk", "content": chunk})
-
                 await websocket.send_json({"type": "done"})
 
-                ai_msg = models.Message(
-                    adventure_id=adventure_id,
-                    role="assistant",
-                    content=full_response,
-                )
-                db.add(ai_msg)
+                db.add(models.Message(adventure_id=adventure_id, role="assistant", content=full_response))
                 db.commit()
                 messages.append({"role": "assistant", "content": full_response})
 
