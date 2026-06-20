@@ -22,3 +22,22 @@ def get_db():
 def init_db():
     import models  # noqa: F401
     Base.metadata.create_all(bind=engine)
+    _seed(SessionLocal())
+
+
+def _seed(db):
+    from models import AdventureTemplate, PromptConfig
+    from templates_data import BUILTIN_TEMPLATES
+
+    # Ensure prompt config row exists
+    if not db.get(PromptConfig, 1):
+        db.add(PromptConfig(id=1, system_addendum="", turn_reminder=""))
+        db.commit()
+
+    # Seed built-in templates only if none exist yet
+    if db.query(AdventureTemplate).filter_by(is_builtin=True).count() == 0:
+        for t in BUILTIN_TEMPLATES:
+            db.add(AdventureTemplate(is_builtin=True, **t))
+        db.commit()
+
+    db.close()

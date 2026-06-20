@@ -12,6 +12,7 @@
     <div id="view-home" class="view active">
       <header class="top-bar">
         <h1>⚔️ DnD Game Master</h1>
+        <button class="icon-btn" id="btn-prompts" title="Настройки промптов">📜</button>
         <button class="icon-btn" id="btn-settings" title="Настройки LLM">⚙️</button>
       </header>
       <div class="home-content">
@@ -28,6 +29,12 @@
         <h1>Новое приключение</h1>
       </header>
       <div class="form-content">
+
+        <!-- Template picker -->
+        <div class="section-divider"><span>Шаблоны</span></div>
+        <div id="template-carousel"></div>
+
+        <div class="section-divider"><span>Настройки</span></div>
         <div class="form-group">
           <label>Название приключения</label>
           <input id="adv-title" type="text" placeholder="Тени Серебряного Леса..." />
@@ -66,6 +73,7 @@
       <header class="top-bar">
         <button class="back-btn" data-target="home">← Назад</button>
         <h1 id="game-title">Приключение</h1>
+        <button class="icon-btn" id="btn-save-template" title="Сохранить как шаблон">💾</button>
         <button class="icon-btn" id="btn-party">👥</button>
       </header>
       <div id="chat-messages"></div>
@@ -93,7 +101,7 @@
       </div>
     </div>
 
-    <!-- VIEW: Settings -->
+    <!-- VIEW: Settings (LLM) -->
     <div id="view-settings" class="overlay hidden">
       <div class="overlay-panel">
         <div class="overlay-header">
@@ -122,6 +130,35 @@
       </div>
     </div>
 
+    <!-- VIEW: Prompt Config (overlay) -->
+    <div id="view-prompts" class="overlay hidden">
+      <div class="overlay-panel">
+        <div class="overlay-header">
+          <h2>📜 Настройки промптов</h2>
+          <button class="close-btn" id="btn-close-prompts">✕</button>
+        </div>
+
+        <div class="prompt-hint">
+          Эти настройки применяются глобально ко всем приключениям.
+        </div>
+
+        <div class="form-group">
+          <label>Глобальный системный промпт</label>
+          <div class="field-hint">Добавляется в начало каждой сессии. Пример: «Всегда отвечай на русском языке», «Используй мрачный готический стиль».</div>
+          <textarea id="prompt-system" rows="5" placeholder="Всегда отвечай на русском языке. Используй богатый литературный язык..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Напоминание к каждому ходу ГМа</label>
+          <div class="field-hint">Вставляется перед каждым ответом LLM. Пример: «Каждый ответ заканчивай вопросом игрокам», «Не выходи из образа».</div>
+          <textarea id="prompt-reminder" rows="4" placeholder="Не выходи из образа ни при каких обстоятельствах. Каждый ответ заканчивай открытым вопросом к игрокам..."></textarea>
+        </div>
+
+        <button class="btn-primary full" id="btn-save-prompts">Сохранить</button>
+        <button class="btn-secondary full" id="btn-reset-prompts">Сбросить</button>
+      </div>
+    </div>
+
     <!-- VIEW: Dice Menu (overlay) -->
     <div id="view-dice" class="overlay hidden">
       <div class="overlay-panel">
@@ -130,6 +167,25 @@
           <button class="close-btn" id="btn-close-dice">✕</button>
         </div>
         <div id="dice-options"></div>
+      </div>
+    </div>
+
+    <!-- VIEW: Save Template (overlay) -->
+    <div id="view-save-tmpl" class="overlay hidden">
+      <div class="overlay-panel">
+        <div class="overlay-header">
+          <h2>Сохранить шаблон</h2>
+          <button class="close-btn" id="btn-close-save-tmpl">✕</button>
+        </div>
+        <div class="form-group">
+          <label>Название шаблона</label>
+          <input id="tmpl-name" type="text" placeholder="Моё приключение" />
+        </div>
+        <div class="form-group">
+          <label>Категория (необязательно)</label>
+          <input id="tmpl-category" type="text" placeholder="dungeon, horror, intrigue..." />
+        </div>
+        <button class="btn-primary full" id="btn-confirm-save-tmpl">Сохранить</button>
       </div>
     </div>
   </div>

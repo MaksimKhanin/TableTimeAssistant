@@ -12,13 +12,8 @@ function showView(name) {
   const el = document.getElementById(`view-${name}`);
   if (el) el.classList.add('active');
 }
-
-function showOverlay(name) {
-  document.getElementById(`view-${name}`).classList.remove('hidden');
-}
-function hideOverlay(name) {
-  document.getElementById(`view-${name}`).classList.add('hidden');
-}
+function showOverlay(name) { document.getElementById(`view-${name}`).classList.remove('hidden'); }
+function hideOverlay(name) { document.getElementById(`view-${name}`).classList.add('hidden'); }
 
 // ── API helpers ──────────────────────────────────────────────────────────────
 async function api(method, path, body) {
@@ -32,7 +27,7 @@ async function api(method, path, body) {
   return r.json();
 }
 
-// ── Markdown renderer (minimal) ───────────────────────────────────────────────
+// ── Markdown renderer ────────────────────────────────────────────────────────
 function renderMd(text) {
   const div = document.createElement('div');
   const html = text
@@ -49,12 +44,18 @@ function esc(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// ── HP bar helper ─────────────────────────────────────────────────────────────
 function hpBarHTML(cur, max) {
   const pct = max > 0 ? Math.round((cur / max) * 100) : 0;
   const color = pct > 50 ? 'var(--success)' : pct > 25 ? 'var(--accent2)' : 'var(--danger)';
   return `<div class="hp-bar-bg"><div class="hp-bar" style="width:${pct}%;background:${color}"></div></div>`;
 }
+
+// ── Category icons ────────────────────────────────────────────────────────────
+const CATEGORY_ICONS = {
+  dungeon: '⛏️', dark: '🩸', horror: '👁️',
+  sea: '⚓', intrigue: '🎭', default: '📖',
+};
+function categoryIcon(cat) { return CATEGORY_ICONS[cat] || CATEGORY_ICONS.default; }
 
 // ── Home view ────────────────────────────────────────────────────────────────
 async function loadAdventures() {
@@ -74,7 +75,7 @@ async function loadAdventures() {
       item.innerHTML = `
         <div class="adv-item-info">
           <div class="adv-item-title">${esc(a.title)}</div>
-          <div class="adv-item-meta">${a.player_count} игрок(а) · ${npcCount} NPC · ${a.status} · ${date}</div>
+          <div class="adv-item-meta">${a.player_count} игрок(а) · ${npcCount} NPC · ${date}</div>
         </div>
         <button class="adv-delete" data-id="${a.id}" title="Удалить">🗑</button>
       `;
@@ -94,49 +95,138 @@ async function loadAdventures() {
   }
 }
 
+// ── Template carousel ────────────────────────────────────────────────────────
+let _templates = [];
+let _selectedTemplateId = null;
+
+async function loadTemplateCarousel() {
+  const container = document.getElementById('template-carousel');
+  container.innerHTML = '';
+  _selectedTemplateId = null;
+
+  try {
+    _templates = await api('GET', '/templates');
+  } catch {
+    container.innerHTML = '<div style="color:var(--text-dim);font-size:13px">Не удалось загрузить шаблоны</div>';
+    return;
+  }
+
+  // "Пустое приключение" pseudo-card
+  const emptyCard = document.createElement('div');
+  emptyCard.className = 'tmpl-card';
+  emptyCard.innerHTML = `
+    <div class="tmpl-card-icon">✏️</div>
+    <div class="tmpl-card-title">С нуля</div>
+    <div class="tmpl-card-meta">Чистая форма</div>
+  `;
+  emptyCard.addEventListener('click', () => {
+    selectTemplate(null);
+    document.querySelectorAll('.tmpl-card').forEach(c => c.classList.remove('selected'));
+    emptyCard.classList.add('selected');
+  });
+  container.appendChild(emptyCard);
+
+  _templates.forEach(tmpl => {
+    const card = document.createElement('div');
+    card.className = 'tmpl-card';
+    card.dataset.id = tmpl.id;
+    card.innerHTML = `
+      <div class="tmpl-card-icon">${categoryIcon(tmpl.category)}</div>
+      <div class="tmpl-card-title">${esc(tmpl.title)}</div>
+      <div class="tmpl-card-meta">${tmpl.player_count} игрок(а)</div>
+      ${!tmpl.is_builtin ? `<button class="tmpl-card-del" title="Удалить шаблон">✕</button>` : ''}
+    `;
+    card.addEventListener('click', (e) => {
+      if (e.target.classList.contains('tmpl-card-del')) return;
+      document.querySelectorAll('.tmpl-card').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      selectTemplate(tmpl);
+    });
+    if (!tmpl.is_builtin) {
+      card.querySelector('.tmpl-card-del')?.addEventListener('click', async () => {
+        if (!confirm(`Удалить шаблон "${tmpl.title}"?`)) return;
+        await api('DELETE', `/templates/${tmpl.id}`);
+        loadTemplateCarousel();
+      });
+    }
+    container.appendChild(card);
+  });
+}
+
+function selectTemplate(tmpl) {
+  _selectedTemplateId = tmpl ? tmpl.id : null;
+
+  if (!tmpl) {
+    // Clear to defaults
+    document.getElementById('adv-title').value = '';
+    document.getElementById('adv-desc').value = '';
+    document.getElementById('adv-role').value = 'Dungeon Master';
+    document.getElementById('adv-players').value = '3';
+    buildCharacterForms(3);
+    document.getElementById('npc-forms').innerHTML = '';
+    return;
+  }
+
+  // Fill fields
+  document.getElementById('adv-title').value = tmpl.title;
+  document.getElementById('adv-desc').value = tmpl.description;
+  document.getElementById('adv-role').value = tmpl.gm_role;
+  document.getElementById('adv-players').value = String(tmpl.player_count);
+
+  // Rebuild character forms with template data
+  buildCharacterForms(tmpl.player_count, tmpl.characters_json);
+
+  // Rebuild NPC forms
+  const npcContainer = document.getElementById('npc-forms');
+  npcContainer.innerHTML = '';
+  (tmpl.npcs_json || []).forEach(n => addNpcForm(n));
+}
+
 // ── New Adventure form ────────────────────────────────────────────────────────
-function buildCharacterForms(count) {
+function buildCharacterForms(count, prefill) {
   const container = document.getElementById('characters-forms');
   container.innerHTML = '';
-  for (let i = 1; i <= count; i++) {
+  for (let i = 0; i < count; i++) {
+    const p = prefill && prefill[i] ? prefill[i] : {};
     const card = document.createElement('div');
     card.className = 'char-card';
-    card.dataset.index = i;
+    card.dataset.index = i + 1;
     card.innerHTML = `
-      <h3>Персонаж ${i}</h3>
+      <h3>Персонаж ${i + 1}</h3>
       <div class="form-group">
         <label>Имя</label>
-        <input class="c-name" type="text" placeholder="Арагорн" />
+        <input class="c-name" type="text" placeholder="Арагорн" value="${esc(p.name || '')}" />
       </div>
       <div class="stats-grid">
-        <div class="stat-field"><label>Раса</label><input class="c-race" type="text" value="Human" /></div>
-        <div class="stat-field"><label>Класс</label><input class="c-class" type="text" value="Fighter" /></div>
-        <div class="stat-field"><label>Уровень</label><input class="c-level" type="number" value="1" min="1" max="20" /></div>
-        <div class="stat-field"><label>СИЛ</label><input class="c-str" type="number" value="10" min="1" max="20" /></div>
-        <div class="stat-field"><label>ЛОВ</label><input class="c-dex" type="number" value="10" min="1" max="20" /></div>
-        <div class="stat-field"><label>ТЕЛ</label><input class="c-con" type="number" value="10" min="1" max="20" /></div>
-        <div class="stat-field"><label>ИНТ</label><input class="c-int" type="number" value="10" min="1" max="20" /></div>
-        <div class="stat-field"><label>МДР</label><input class="c-wis" type="number" value="10" min="1" max="20" /></div>
-        <div class="stat-field"><label>ХАР</label><input class="c-cha" type="number" value="10" min="1" max="20" /></div>
-        <div class="stat-field"><label>Макс ХП</label><input class="c-hp" type="number" value="10" min="1" /></div>
-        <div class="stat-field"><label>КД</label><input class="c-ac" type="number" value="10" min="1" /></div>
-        <div class="stat-field"><label>Бонус атаки</label><input class="c-atk" type="number" value="0" /></div>
+        <div class="stat-field"><label>Раса</label><input class="c-race" type="text" value="${esc(p.race || 'Human')}" /></div>
+        <div class="stat-field"><label>Класс</label><input class="c-class" type="text" value="${esc(p.char_class || 'Fighter')}" /></div>
+        <div class="stat-field"><label>Уровень</label><input class="c-level" type="number" value="${p.level || 1}" min="1" max="20" /></div>
+        <div class="stat-field"><label>СИЛ</label><input class="c-str" type="number" value="${p.strength || 10}" min="1" max="20" /></div>
+        <div class="stat-field"><label>ЛОВ</label><input class="c-dex" type="number" value="${p.dexterity || 10}" min="1" max="20" /></div>
+        <div class="stat-field"><label>ТЕЛ</label><input class="c-con" type="number" value="${p.constitution || 10}" min="1" max="20" /></div>
+        <div class="stat-field"><label>ИНТ</label><input class="c-int" type="number" value="${p.intelligence || 10}" min="1" max="20" /></div>
+        <div class="stat-field"><label>МДР</label><input class="c-wis" type="number" value="${p.wisdom || 10}" min="1" max="20" /></div>
+        <div class="stat-field"><label>ХАР</label><input class="c-cha" type="number" value="${p.charisma || 10}" min="1" max="20" /></div>
+        <div class="stat-field"><label>Макс ХП</label><input class="c-hp" type="number" value="${p.max_hp || 10}" min="1" /></div>
+        <div class="stat-field"><label>КД</label><input class="c-ac" type="number" value="${p.armor_class || 10}" min="1" /></div>
+        <div class="stat-field"><label>Бонус атаки</label><input class="c-atk" type="number" value="${p.attack_bonus || 0}" /></div>
       </div>
-      <div class="stat-field"><label>Кости урона</label><input class="c-dmg" type="text" value="1d6" /></div>
+      <div class="stat-field"><label>Кости урона</label><input class="c-dmg" type="text" value="${esc(p.damage_dice || '1d6')}" /></div>
       <div class="form-group">
         <label>Способности / черты</label>
-        <textarea class="c-abilities" rows="2" placeholder="Второе дыхание, Боевой стиль: Дуэль..."></textarea>
+        <textarea class="c-abilities" rows="2" placeholder="Второе дыхание, Боевой стиль: Дуэль...">${esc(p.abilities || '')}</textarea>
       </div>
       <div class="form-group">
         <label>Предыстория</label>
-        <textarea class="c-background" rows="2" placeholder="Бывший солдат, ищущий искупления..."></textarea>
+        <textarea class="c-background" rows="2" placeholder="Бывший солдат, ищущий искупления...">${esc(p.background || '')}</textarea>
       </div>
     `;
     container.appendChild(card);
   }
 }
 
-function addNpcForm() {
+function addNpcForm(prefill) {
+  const p = prefill || {};
   const container = document.getElementById('npc-forms');
   const idx = container.children.length + 1;
   const card = document.createElement('div');
@@ -146,28 +236,28 @@ function addNpcForm() {
     <button class="remove-btn" title="Удалить">✕</button>
     <div class="form-group">
       <label>Имя</label>
-      <input class="n-name" type="text" placeholder="Барон Мортис" />
+      <input class="n-name" type="text" placeholder="Барон Мортис" value="${esc(p.name || '')}" />
     </div>
     <div class="stats-grid">
-      <div class="stat-field"><label>Роль</label><input class="n-role" type="text" placeholder="Злодей" /></div>
+      <div class="stat-field"><label>Роль</label><input class="n-role" type="text" placeholder="Злодей" value="${esc(p.role || '')}" /></div>
       <div class="stat-field"><label>Тип</label>
         <select class="n-enemy">
-          <option value="1">Враг</option>
-          <option value="0">Союзник</option>
+          <option value="1" ${p.is_enemy ? 'selected' : ''}>Враг</option>
+          <option value="0" ${!p.is_enemy ? 'selected' : ''}>Союзник</option>
         </select>
       </div>
-      <div class="stat-field"><label>Макс ХП</label><input class="n-hp" type="number" value="20" min="1" /></div>
-      <div class="stat-field"><label>КД</label><input class="n-ac" type="number" value="12" min="1" /></div>
-      <div class="stat-field"><label>Бонус атаки</label><input class="n-atk" type="number" value="3" /></div>
-      <div class="stat-field"><label>Кости урона</label><input class="n-dmg" type="text" value="1d8" /></div>
+      <div class="stat-field"><label>Макс ХП</label><input class="n-hp" type="number" value="${p.max_hp || 20}" min="1" /></div>
+      <div class="stat-field"><label>КД</label><input class="n-ac" type="number" value="${p.armor_class || 12}" min="1" /></div>
+      <div class="stat-field"><label>Бонус атаки</label><input class="n-atk" type="number" value="${p.attack_bonus || 3}" /></div>
+      <div class="stat-field"><label>Кости урона</label><input class="n-dmg" type="text" value="${esc(p.damage_dice || '1d8')}" /></div>
     </div>
     <div class="form-group">
       <label>Характер и мотивация</label>
-      <textarea class="n-personality" rows="2" placeholder="Холодный, расчётливый. Хочет захватить королевство..."></textarea>
+      <textarea class="n-personality" rows="2" placeholder="Холодный, расчётливый...">${esc(p.personality || '')}</textarea>
     </div>
     <div class="form-group">
       <label>Манера речи</label>
-      <textarea class="n-voice" rows="1" placeholder="Говорит высокопарно, с презрением к простолюдинам..."></textarea>
+      <textarea class="n-voice" rows="1" placeholder="Говорит высокопарно...">${esc(p.voice_style || '')}</textarea>
     </div>
   `;
   card.querySelector('.remove-btn').addEventListener('click', () => card.remove());
@@ -175,8 +265,7 @@ function addNpcForm() {
 }
 
 function collectCharacters() {
-  const cards = document.querySelectorAll('.char-card');
-  return Array.from(cards).map((card, i) => ({
+  return Array.from(document.querySelectorAll('.char-card')).map((card, i) => ({
     name: card.querySelector('.c-name').value.trim() || `Персонаж ${i + 1}`,
     race: card.querySelector('.c-race').value.trim(),
     char_class: card.querySelector('.c-class').value.trim(),
@@ -197,8 +286,7 @@ function collectCharacters() {
 }
 
 function collectNpcs() {
-  const cards = document.querySelectorAll('.npc-card');
-  return Array.from(cards).map(card => ({
+  return Array.from(document.querySelectorAll('.npc-card')).map(card => ({
     name: card.querySelector('.n-name').value.trim() || 'NPC',
     role: card.querySelector('.n-role').value.trim(),
     is_enemy: parseInt(card.querySelector('.n-enemy').value),
@@ -238,7 +326,6 @@ function connectWS(adventureId) {
   if (ws) ws.close();
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}/ws/${adventureId}`);
-
   ws.onmessage = (e) => handleWSMessage(JSON.parse(e.data));
   ws.onclose = () => {
     setTimeout(() => {
@@ -285,23 +372,17 @@ function appendMessage(role, content, playerName, scroll) {
   const container = document.getElementById('chat-messages');
   const msg = document.createElement('div');
   msg.className = `msg ${role}`;
-
   const bubble = document.createElement('div');
   bubble.className = 'msg-bubble';
-  if (role === 'thinking') {
-    bubble.textContent = content;
-  } else {
-    bubble.appendChild(renderMd(content));
-  }
+  if (role === 'thinking') bubble.textContent = content;
+  else bubble.appendChild(renderMd(content));
   msg.appendChild(bubble);
-
   if (role === 'user' && playerName) {
     const meta = document.createElement('div');
     meta.className = 'msg-meta';
     meta.textContent = playerName;
     msg.appendChild(meta);
   }
-
   container.appendChild(msg);
   if (scroll) scrollChat();
   return msg;
@@ -322,12 +403,10 @@ function sendMessage() {
   const content = document.getElementById('chat-input').value.trim();
   if (!content) return;
   const playerName = document.getElementById('player-select').value;
-
   appendMessage('user', content, playerName, true);
   document.getElementById('chat-input').value = '';
   isThinking = true;
   setInputEnabled(false);
-
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'message', player_name: playerName, content }));
   } else {
@@ -342,11 +421,9 @@ function buildHpCard(entity, isNpc, adventureId, refreshFn) {
   const el = document.createElement('div');
   const cssClass = isNpc ? (entity.is_enemy ? 'enemy' : 'ally') : '';
   el.className = `party-char ${cssClass}`;
-
   const sub = isNpc
     ? `${esc(entity.role || (entity.is_enemy ? 'Враг' : 'Союзник'))} · КД ${entity.armor_class}`
     : `${esc(entity.race)} ${esc(entity.char_class)} · Ур.${entity.level} · КД ${entity.armor_class}`;
-
   el.innerHTML = `
     <div class="party-char-name">${esc(entity.name)}</div>
     <div class="party-char-sub">${sub}</div>
@@ -361,7 +438,6 @@ function buildHpCard(entity, isNpc, adventureId, refreshFn) {
       <span style="font-size:12px;color:var(--text-dim);margin-left:4px">${entity.status}</span>
     </div>
   `;
-
   el.querySelector('.hp-heal').addEventListener('click', async () => {
     const delta = parseInt(el.querySelector('.hp-delta').value) || 5;
     const endpoint = isNpc ? `/adventures/${adventureId}/npc-hp` : `/adventures/${adventureId}/hp`;
@@ -376,7 +452,6 @@ function buildHpCard(entity, isNpc, adventureId, refreshFn) {
     await api('POST', endpoint, body);
     refreshFn();
   });
-
   return el;
 }
 
@@ -385,37 +460,26 @@ async function loadPartyPanel() {
   const npcList = document.getElementById('npc-list');
   partyList.innerHTML = '';
   npcList.innerHTML = '';
-
   try {
     const adv = await api('GET', `/adventures/${currentAdventureId}`);
-
-    // Players
     if (adv.characters.length) {
-      const title = document.createElement('div');
-      title.className = 'panel-section-title';
-      title.textContent = 'Игроки';
-      partyList.appendChild(title);
-      adv.characters.forEach(c => {
-        partyList.appendChild(buildHpCard(c, false, currentAdventureId, loadPartyPanel));
-      });
+      const t = document.createElement('div');
+      t.className = 'panel-section-title';
+      t.textContent = 'Игроки';
+      partyList.appendChild(t);
+      adv.characters.forEach(c => partyList.appendChild(buildHpCard(c, false, currentAdventureId, loadPartyPanel)));
     }
-
-    // NPCs
     if (adv.npcs && adv.npcs.length) {
-      const enemies = adv.npcs.filter(n => n.is_enemy);
-      const allies = adv.npcs.filter(n => !n.is_enemy);
-
       const render = (list, label) => {
         if (!list.length) return;
-        const title = document.createElement('div');
-        title.className = 'panel-section-title';
-        title.textContent = label;
-        npcList.appendChild(title);
+        const t = document.createElement('div');
+        t.className = 'panel-section-title';
+        t.textContent = label;
+        npcList.appendChild(t);
         list.forEach(n => npcList.appendChild(buildHpCard(n, true, currentAdventureId, loadPartyPanel)));
       };
-
-      render(enemies, 'Враги');
-      render(allies, 'Союзники');
+      render(adv.npcs.filter(n => n.is_enemy), 'Враги');
+      render(adv.npcs.filter(n => !n.is_enemy), 'Союзники');
     }
   } catch (e) {
     partyList.innerHTML = `<div class="empty-state">Ошибка: ${e.message}</div>`;
@@ -426,16 +490,13 @@ async function loadPartyPanel() {
 async function loadDicePanel() {
   const container = document.getElementById('dice-options');
   container.innerHTML = '';
-
   const adv = await api('GET', `/adventures/${currentAdventureId}`);
-  const allChars = adv.characters;
-  const allNpcs = adv.npcs || [];
 
-  // ── Selector: кто бросает ──
+  const charOptions = adv.characters.map(c => `<option value="char:${c.id}">${esc(c.name)} (${esc(c.char_class)})</option>`).join('');
+  const npcOptions = (adv.npcs || []).map(n => `<option value="npc:${n.id}">${esc(n.name)} (${n.is_enemy ? '⚔ враг' : '🤝 союзник'})</option>`).join('');
+
   const modeRow = document.createElement('div');
   modeRow.className = 'form-group';
-  const charOptions = allChars.map(c => `<option value="char:${c.id}">${esc(c.name)} (${esc(c.char_class)})</option>`).join('');
-  const npcOptions = allNpcs.map(n => `<option value="npc:${n.id}">${esc(n.name)} (${n.is_enemy ? '⚔ враг' : '🤝 союзник'})</option>`).join('');
   modeRow.innerHTML = `<label>Кто бросает</label><select id="dice-actor-sel">${charOptions}${npcOptions}</select>`;
   container.appendChild(modeRow);
 
@@ -444,28 +505,7 @@ async function loadDicePanel() {
   acRow.innerHTML = `<label>КД / DC цели</label><input id="dice-ac" type="number" value="12" min="1" max="30" />`;
   container.appendChild(acRow);
 
-  const playerRolls = [
-    { type: 'initiative', label: 'Инициатива', icon: '⚡' },
-    { type: 'attack', label: 'Атака', icon: '⚔️' },
-    { type: 'damage', label: 'Урон', icon: '💥' },
-    { type: 'save_str', label: 'Спасбросок СИЛ', icon: '💪' },
-    { type: 'save_dex', label: 'Спасбросок ЛОВ', icon: '🏃' },
-    { type: 'save_con', label: 'Спасбросок ТЕЛ', icon: '🛡' },
-    { type: 'save_int', label: 'Спасбросок ИНТ', icon: '🧠' },
-    { type: 'save_wis', label: 'Спасбросок МДР', icon: '🌿' },
-    { type: 'save_cha', label: 'Спасбросок ХАР', icon: '✨' },
-  ];
-  const freeRolls = [
-    { type: 'd4', label: 'd4', icon: '🎲' },
-    { type: 'd6', label: 'd6', icon: '🎲' },
-    { type: 'd8', label: 'd8', icon: '🎲' },
-    { type: 'd10', label: 'd10', icon: '🎲' },
-    { type: 'd12', label: 'd12', icon: '🎲' },
-    { type: 'd20', label: 'd20', icon: '🎲' },
-    { type: 'd100', label: 'd100', icon: '🎲' },
-  ];
-
-  const makeGrid = (rolls, npcOnly) => {
+  const makeGrid = (rolls) => {
     const grid = document.createElement('div');
     grid.className = 'dice-grid';
     rolls.forEach(rt => {
@@ -480,41 +520,64 @@ async function loadDicePanel() {
           let result;
           if (actorType === 'npc') {
             result = await api('POST', `/adventures/${currentAdventureId}/npc-roll`, {
-              npc_id: parseInt(actorId),
-              roll_type: rt.type,
+              npc_id: parseInt(actorId), roll_type: rt.type,
               target_ac: rt.type === 'attack' ? targetAc : null,
             });
           } else {
             result = await api('POST', `/adventures/${currentAdventureId}/roll`, {
-              character_id: parseInt(actorId),
-              roll_type: rt.type,
+              character_id: parseInt(actorId), roll_type: rt.type,
               target_ac: rt.type === 'attack' || rt.type.startsWith('save_') ? targetAc : null,
             });
           }
           appendMessage('dice', result.result, null, true);
           hideOverlay('dice');
-        } catch (e) {
-          alert(`Ошибка: ${e.message}`);
-        }
+        } catch (e) { alert(`Ошибка: ${e.message}`); }
       });
       grid.appendChild(btn);
     });
     return grid;
   };
 
-  const labelEl = document.createElement('div');
-  labelEl.className = 'panel-section-title';
-  labelEl.textContent = 'Броски';
-  labelEl.style.margin = '8px 0 4px';
-  container.appendChild(labelEl);
-  container.appendChild(makeGrid(playerRolls));
+  const label1 = document.createElement('div');
+  label1.className = 'panel-section-title';
+  label1.style.margin = '8px 0 4px';
+  label1.textContent = 'Боевые броски';
+  container.appendChild(label1);
+  container.appendChild(makeGrid([
+    { type: 'initiative', label: 'Инициатива', icon: '⚡' },
+    { type: 'attack', label: 'Атака', icon: '⚔️' },
+    { type: 'damage', label: 'Урон', icon: '💥' },
+    { type: 'save_str', label: 'Спасбросок СИЛ', icon: '💪' },
+    { type: 'save_dex', label: 'Спасбросок ЛОВ', icon: '🏃' },
+    { type: 'save_con', label: 'Спасбросок ТЕЛ', icon: '🛡' },
+    { type: 'save_int', label: 'Спасбросок ИНТ', icon: '🧠' },
+    { type: 'save_wis', label: 'Спасбросок МДР', icon: '🌿' },
+    { type: 'save_cha', label: 'Спасбросок ХАР', icon: '✨' },
+  ]));
 
-  const freeLabel = document.createElement('div');
-  freeLabel.className = 'panel-section-title';
-  freeLabel.textContent = 'Свободные кубики';
-  freeLabel.style.margin = '8px 0 4px';
-  container.appendChild(freeLabel);
-  container.appendChild(makeGrid(freeRolls));
+  const label2 = document.createElement('div');
+  label2.className = 'panel-section-title';
+  label2.style.margin = '8px 0 4px';
+  label2.textContent = 'Произвольный кубик';
+  container.appendChild(label2);
+  container.appendChild(makeGrid([
+    { type: 'd4', label: 'd4', icon: '🎲' },
+    { type: 'd6', label: 'd6', icon: '🎲' },
+    { type: 'd8', label: 'd8', icon: '🎲' },
+    { type: 'd10', label: 'd10', icon: '🎲' },
+    { type: 'd12', label: 'd12', icon: '🎲' },
+    { type: 'd20', label: 'd20', icon: '🎲' },
+    { type: 'd100', label: 'd100', icon: '🎲' },
+  ]));
+}
+
+// ── Prompt Config ─────────────────────────────────────────────────────────────
+async function loadPromptConfig() {
+  try {
+    const cfg = await api('GET', '/prompt-config');
+    document.getElementById('prompt-system').value = cfg.system_addendum || '';
+    document.getElementById('prompt-reminder').value = cfg.turn_reminder || '';
+  } catch {}
 }
 
 // ── LLM Settings ──────────────────────────────────────────────────────────────
@@ -550,6 +613,7 @@ async function checkLLMStatus() {
 
 // ── Event wiring ──────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  // Back buttons
   document.querySelectorAll('[data-target]').forEach(btn => {
     btn.addEventListener('click', () => {
       const target = btn.dataset.target;
@@ -562,10 +626,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  document.getElementById('btn-new-adventure').addEventListener('click', () => {
+  // Home buttons
+  document.getElementById('btn-new-adventure').addEventListener('click', async () => {
     document.getElementById('npc-forms').innerHTML = '';
-    buildCharacterForms(parseInt(document.getElementById('adv-players')?.value || 3));
+    buildCharacterForms(3);
     showView('new');
+    await loadTemplateCarousel();
   });
 
   document.getElementById('btn-settings').addEventListener('click', async () => {
@@ -573,20 +639,23 @@ document.addEventListener('DOMContentLoaded', () => {
     showOverlay('settings');
   });
 
+  document.getElementById('btn-prompts').addEventListener('click', async () => {
+    await loadPromptConfig();
+    showOverlay('prompts');
+  });
+
+  // New adventure form
   document.getElementById('adv-players').addEventListener('change', (e) => {
     buildCharacterForms(parseInt(e.target.value));
   });
-
-  document.getElementById('btn-add-npc').addEventListener('click', addNpcForm);
+  document.getElementById('btn-add-npc').addEventListener('click', () => addNpcForm());
 
   document.getElementById('btn-start-adventure').addEventListener('click', async () => {
     const title = document.getElementById('adv-title').value.trim();
     const desc = document.getElementById('adv-desc').value.trim();
     const role = document.getElementById('adv-role').value.trim() || 'Dungeon Master';
     const playerCount = parseInt(document.getElementById('adv-players').value);
-
     if (!title || !desc) { alert('Заполните название и описание приключения'); return; }
-
     const characters = collectCharacters();
     const npcs = collectNpcs();
     try {
@@ -604,6 +673,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // Game
   document.getElementById('btn-send').addEventListener('click', sendMessage);
   document.getElementById('chat-input').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
@@ -621,6 +691,43 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('btn-close-dice').addEventListener('click', () => hideOverlay('dice'));
 
+  // Save as template
+  document.getElementById('btn-save-template').addEventListener('click', () => {
+    document.getElementById('tmpl-name').value = document.getElementById('game-title').textContent;
+    document.getElementById('tmpl-category').value = '';
+    showOverlay('save-tmpl');
+  });
+  document.getElementById('btn-close-save-tmpl').addEventListener('click', () => hideOverlay('save-tmpl'));
+  document.getElementById('btn-confirm-save-tmpl').addEventListener('click', async () => {
+    const title = document.getElementById('tmpl-name').value.trim();
+    const category = document.getElementById('tmpl-category').value.trim();
+    if (!title) { alert('Введите название шаблона'); return; }
+    try {
+      await api('POST', '/templates', { title, category, adventure_id: currentAdventureId });
+      hideOverlay('save-tmpl');
+      alert('Шаблон сохранён!');
+    } catch (e) { alert(`Ошибка: ${e.message}`); }
+  });
+
+  // Prompt config
+  document.getElementById('btn-close-prompts').addEventListener('click', () => hideOverlay('prompts'));
+  document.getElementById('btn-save-prompts').addEventListener('click', async () => {
+    await api('PUT', '/prompt-config', {
+      system_addendum: document.getElementById('prompt-system').value,
+      turn_reminder: document.getElementById('prompt-reminder').value,
+    });
+    hideOverlay('prompts');
+    alert('Промпты сохранены. Применятся к следующей сессии.');
+  });
+  document.getElementById('btn-reset-prompts').addEventListener('click', async () => {
+    if (!confirm('Сбросить промпты на пустые?')) return;
+    document.getElementById('prompt-system').value = '';
+    document.getElementById('prompt-reminder').value = '';
+    await api('PUT', '/prompt-config', { system_addendum: '', turn_reminder: '' });
+    hideOverlay('prompts');
+  });
+
+  // LLM settings
   document.getElementById('btn-close-settings').addEventListener('click', () => hideOverlay('settings'));
   document.getElementById('btn-save-llm').addEventListener('click', async () => {
     await api('PUT', '/llm/config', {
@@ -633,6 +740,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('btn-check-llm').addEventListener('click', checkLLMStatus);
 
+  // Init
   buildCharacterForms(3);
   loadAdventures();
 });

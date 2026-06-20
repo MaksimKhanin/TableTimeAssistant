@@ -30,6 +30,7 @@ def build_system_prompt(
     gm_role: str,
     characters: list[dict],
     npcs: list[dict] | None = None,
+    system_addendum: str = "",
 ) -> str:
     char_lines = []
     for c in characters:
@@ -66,8 +67,10 @@ def build_system_prompt(
     if allies:
         npc_section += "\n### Союзники и нейтральные NPC\n" + "\n".join(allies)
 
+    global_extra = f"\n\n## Дополнительные инструкции\n{system_addendum.strip()}" if system_addendum and system_addendum.strip() else ""
+
     return f"""Ты — {gm_role}, ведущий интерактивной ролевой игры в стиле Dungeons & Dragons.
-Ты НИКОГДА не выходишь из образа и не ссылаешься на то, что ты — языковая модель.
+Ты НИКОГДА не выходишь из образа и не ссылаешься на то, что ты — языковая модель.{global_extra}
 
 ## Мир и завязка
 {adventure_description}

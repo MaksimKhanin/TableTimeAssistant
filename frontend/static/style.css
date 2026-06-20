@@ -360,6 +360,61 @@ html, body, #app {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 2px; }
 
+/* ── Template carousel ── */
+#template-carousel {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+#template-carousel::-webkit-scrollbar { height: 3px; }
+#template-carousel::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 2px; }
+
+.tmpl-card {
+  flex-shrink: 0;
+  width: 180px;
+  background: var(--surface);
+  border: 1px solid var(--surface2);
+  border-radius: var(--radius);
+  padding: 12px;
+  cursor: pointer;
+  scroll-snap-align: start;
+  transition: border-color 0.15s;
+  position: relative;
+}
+.tmpl-card:hover { border-color: var(--accent2); }
+.tmpl-card.selected { border-color: var(--accent); background: #2a1020; }
+.tmpl-card-icon { font-size: 24px; margin-bottom: 6px; }
+.tmpl-card-title { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+.tmpl-card-meta { font-size: 11px; color: var(--text-dim); }
+.tmpl-card-del {
+  position: absolute;
+  top: 6px; right: 6px;
+  background: none; border: none;
+  color: var(--danger); font-size: 14px;
+  cursor: pointer; padding: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.tmpl-card:hover .tmpl-card-del { opacity: 1; }
+
+/* ── Prompt config overlay ── */
+.prompt-hint {
+  font-size: 13px;
+  color: var(--text-dim);
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.field-hint {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
 /* ── Section divider ── */
 .section-divider {
   display: flex;

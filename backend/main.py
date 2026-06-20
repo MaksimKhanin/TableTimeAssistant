@@ -100,7 +100,7 @@ def get_messages(adventure_id: int, db: Session = Depends(get_db)):
 
 # ── Player Dice Rolls ─────────────────────────────────────────────────────────
 
-def _resolve_char_roll(char: models.Character, roll_type: str, target_ac: int | None, damage_dice: str | None) -> tuple[str, dict]:
+def _resolve_char_roll(char, roll_type, target_ac, damage_dice):
     if roll_type == "initiative":
         r = dnd.roll_initiative(char.dexterity)
         text = dnd.format_roll_result(
@@ -148,9 +148,7 @@ def dice_roll(adventure_id: int, req: schemas.DiceRollRequest, db: Session = Dep
     char = db.get(models.Character, req.character_id)
     if not char or char.adventure_id != adventure_id:
         raise HTTPException(404, "Персонаж не найден")
-
     result_text, roll_data = _resolve_char_roll(char, req.roll_type, req.target_ac, req.damage_dice)
-
     db.add(models.Message(
         adventure_id=adventure_id, role="dice",
         content=result_text, player_name=char.name, metadata_=roll_data,
@@ -167,42 +165,34 @@ def npc_dice_roll(adventure_id: int, req: schemas.NpcRollRequest, db: Session = 
     if not npc or npc.adventure_id != adventure_id:
         raise HTTPException(404, "NPC не найден")
 
-    roll_type = req.roll_type
-    target_ac = req.target_ac
-    result_text = ""
-    roll_data = {}
-
-    if roll_type == "attack":
+    if req.roll_type == "attack":
         r = dnd.roll_attack(npc.attack_bonus)
-        hit = target_ac is None or r["total"] >= target_ac
-        result_text = dnd.format_roll_result(r, f"Атака {npc.name}")
-        if target_ac is not None:
-            result_text += f" vs КД {target_ac} → {'**ПОПАДАНИЕ**' if hit else 'промах'}"
+        hit = req.target_ac is None or r["total"] >= req.target_ac
+        text = dnd.format_roll_result(r, f"Атака {npc.name}")
+        if req.target_ac is not None:
+            text += f" vs КД {req.target_ac} → {'**ПОПАДАНИЕ**' if hit else 'промах'}"
         roll_data = {**r, "hit": hit}
-
-    elif roll_type == "damage":
+    elif req.roll_type == "damage":
         dice = req.damage_dice or npc.damage_dice
         r = dnd.roll_damage(dice)
-        result_text = dnd.format_roll_result(r, f"Урон {npc.name}")
+        text = dnd.format_roll_result(r, f"Урон {npc.name}")
         roll_data = r
-
-    elif roll_type == "initiative":
+    elif req.roll_type == "initiative":
         val = dnd.roll(20)[0]
-        result_text = f"**Инициатива {npc.name}**: 🎲 d20 = **{val}**"
+        text = f"**Инициатива {npc.name}**: 🎲 d20 = **{val}**"
         roll_data = {"type": "initiative", "total": val}
-
     else:
-        sides = int(roll_type.replace("d", "") or 20)
+        sides = int(req.roll_type.replace("d", "") or 20)
         val = dnd.roll(sides)[0]
-        result_text = f"🎲 {npc.name} d{sides} = **{val}**"
+        text = f"🎲 {npc.name} d{sides} = **{val}**"
         roll_data = {"total": val}
 
     db.add(models.Message(
         adventure_id=adventure_id, role="dice",
-        content=result_text, player_name=npc.name, metadata_=roll_data,
+        content=text, player_name=npc.name, metadata_=roll_data,
     ))
     db.commit()
-    return {"result": result_text, "data": roll_data}
+    return {"result": text, "data": roll_data}
 
 
 # ── HP Management ─────────────────────────────────────────────────────────────
@@ -212,7 +202,6 @@ def update_hp(adventure_id: int, req: schemas.HPUpdateRequest, db: Session = Dep
     char = db.get(models.Character, req.character_id)
     if not char or char.adventure_id != adventure_id:
         raise HTTPException(404, "Персонаж не найден")
-
     char.current_hp = max(0, min(char.max_hp, char.current_hp + req.delta))
     char.status = "unconscious" if char.current_hp == 0 else "alive"
     db.commit()
@@ -224,11 +213,98 @@ def update_npc_hp(adventure_id: int, req: schemas.NpcHPUpdateRequest, db: Sessio
     npc = db.get(models.Npc, req.npc_id)
     if not npc or npc.adventure_id != adventure_id:
         raise HTTPException(404, "NPC не найден")
-
     npc.current_hp = max(0, min(npc.max_hp, npc.current_hp + req.delta))
     npc.status = "dead" if npc.current_hp == 0 else "alive"
     db.commit()
     return {"npc_id": npc.id, "name": npc.name, "current_hp": npc.current_hp, "max_hp": npc.max_hp, "status": npc.status}
+
+
+# ── Templates ─────────────────────────────────────────────────────────────────
+
+@app.get("/api/templates", response_model=list[schemas.TemplateOut])
+def list_templates(db: Session = Depends(get_db)):
+    return db.query(models.AdventureTemplate).order_by(
+        models.AdventureTemplate.is_builtin.desc(),
+        models.AdventureTemplate.id,
+    ).all()
+
+
+@app.post("/api/templates", response_model=schemas.TemplateOut)
+def save_template(req: schemas.TemplateSaveRequest, db: Session = Depends(get_db)):
+    if req.adventure_id:
+        adv = db.get(models.Adventure, req.adventure_id)
+        if not adv:
+            raise HTTPException(404, "Приключение не найдено")
+        chars = [
+            {k: getattr(c, k) for k in [
+                "name", "race", "char_class", "level", "strength", "dexterity",
+                "constitution", "intelligence", "wisdom", "charisma",
+                "max_hp", "armor_class", "attack_bonus", "damage_dice", "abilities", "background",
+            ]}
+            for c in adv.characters
+        ]
+        npcs = [
+            {k: getattr(n, k) for k in [
+                "name", "role", "personality", "voice_style",
+                "max_hp", "armor_class", "attack_bonus", "damage_dice", "is_enemy",
+            ]}
+            for n in adv.npcs
+        ]
+        tmpl = models.AdventureTemplate(
+            title=req.title,
+            category=req.category,
+            description=adv.description,
+            gm_role=adv.gm_role,
+            player_count=adv.player_count,
+            characters_json=chars,
+            npcs_json=npcs,
+            is_builtin=False,
+        )
+    else:
+        tmpl = models.AdventureTemplate(
+            title=req.title,
+            category=req.category,
+            description=req.description,
+            gm_role=req.gm_role,
+            player_count=req.player_count,
+            characters_json=req.characters_json,
+            npcs_json=req.npcs_json,
+            is_builtin=False,
+        )
+    db.add(tmpl)
+    db.commit()
+    db.refresh(tmpl)
+    return tmpl
+
+
+@app.delete("/api/templates/{template_id}")
+def delete_template(template_id: int, db: Session = Depends(get_db)):
+    tmpl = db.get(models.AdventureTemplate, template_id)
+    if not tmpl:
+        raise HTTPException(404, "Шаблон не найден")
+    if tmpl.is_builtin:
+        raise HTTPException(400, "Встроенные шаблоны нельзя удалить")
+    db.delete(tmpl)
+    db.commit()
+    return {"ok": True}
+
+
+# ── Prompt Config ─────────────────────────────────────────────────────────────
+
+@app.get("/api/prompt-config", response_model=schemas.PromptConfigOut)
+def get_prompt_config(db: Session = Depends(get_db)):
+    cfg = db.get(models.PromptConfig, 1)
+    return cfg
+
+
+@app.put("/api/prompt-config", response_model=schemas.PromptConfigOut)
+def update_prompt_config(data: schemas.PromptConfigUpdate, db: Session = Depends(get_db)):
+    cfg = db.get(models.PromptConfig, 1)
+    cfg.system_addendum = data.system_addendum
+    cfg.turn_reminder = data.turn_reminder
+    db.commit()
+    db.refresh(cfg)
+    return cfg
 
 
 # ── LLM Config ────────────────────────────────────────────────────────────────
@@ -263,7 +339,12 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
             await websocket.close()
             return
 
-        def build_context() -> list[dict]:
+        # Load prompt config
+        prompt_cfg = db.get(models.PromptConfig, 1)
+        system_addendum = prompt_cfg.system_addendum if prompt_cfg else ""
+        turn_reminder = prompt_cfg.turn_reminder if prompt_cfg else ""
+
+        def build_chars_npcs():
             db.expire_all()
             chars = [
                 {
@@ -283,9 +364,9 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
             ]
             return chars, npcs_data
 
-        chars, npcs_data = build_context()
+        chars, npcs_data = build_chars_npcs()
         system_prompt = llm_client.build_system_prompt(
-            adventure.description, adventure.gm_role, chars, npcs_data
+            adventure.description, adventure.gm_role, chars, npcs_data, system_addendum,
         )
 
         history = db.query(models.Message).filter(
@@ -304,7 +385,6 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
                 full_response += chunk
                 await websocket.send_json({"type": "chunk", "content": chunk})
             await websocket.send_json({"type": "done"})
-
             db.add(models.Message(adventure_id=adventure_id, role="assistant", content=full_response))
             db.commit()
             messages.append({"role": "assistant", "content": full_response})
@@ -322,6 +402,8 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
             parts = ["[Состояние отряда]"] + char_lines
             if npc_lines:
                 parts += ["[NPC]"] + npc_lines
+            if turn_reminder and turn_reminder.strip():
+                parts += [f"\n[Напоминание ГМу]: {turn_reminder.strip()}"]
             return "\n".join(parts)
 
         while True:

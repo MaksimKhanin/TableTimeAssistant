@@ -125,3 +125,43 @@ class LLMConfigUpdate(BaseModel):
     model: str
     temperature: float = 0.8
     max_tokens: int = 1024
+
+
+class TemplateOut(BaseModel):
+    id: int
+    title: str
+    category: str
+    description: str
+    gm_role: str
+    player_count: int
+    characters_json: list
+    npcs_json: list
+    is_builtin: bool
+
+    class Config:
+        from_attributes = True
+
+
+class TemplateSaveRequest(BaseModel):
+    title: str
+    category: str = ""
+    adventure_id: Optional[int] = None   # save from existing adventure
+    # or provide data directly:
+    description: str = ""
+    gm_role: str = "Dungeon Master"
+    player_count: int = 2
+    characters_json: list = []
+    npcs_json: list = []
+
+
+class PromptConfigOut(BaseModel):
+    system_addendum: str
+    turn_reminder: str
+
+    class Config:
+        from_attributes = True
+
+
+class PromptConfigUpdate(BaseModel):
+    system_addendum: str = ""
+    turn_reminder: str = ""

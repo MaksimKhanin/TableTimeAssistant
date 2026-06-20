@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
@@ -84,3 +84,27 @@ class Message(Base):
     created_at = Column(DateTime, server_default=func.now())
 
     adventure = relationship("Adventure", back_populates="messages")
+
+
+class AdventureTemplate(Base):
+    __tablename__ = "adventure_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(200), nullable=False)
+    category = Column(String(50), default="")       # dungeon, horror, intrigue, sea, ...
+    description = Column(Text, nullable=False)
+    gm_role = Column(String(100), default="Dungeon Master")
+    player_count = Column(Integer, default=2)
+    characters_json = Column(JSON, default=list)    # list of character dicts
+    npcs_json = Column(JSON, default=list)          # list of npc dicts
+    is_builtin = Column(Boolean, default=False)     # built-in cannot be deleted
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class PromptConfig(Base):
+    """Single-row config (id=1 always)."""
+    __tablename__ = "prompt_config"
+
+    id = Column(Integer, primary_key=True, default=1)
+    system_addendum = Column(Text, default="")     # appended to every system prompt
+    turn_reminder = Column(Text, default="")       # injected into each player message
