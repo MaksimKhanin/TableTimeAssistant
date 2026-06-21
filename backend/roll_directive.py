@@ -81,24 +81,83 @@ def _enabled_categories(rules: list[dict]) -> list[dict]:
     return [r for r in (rules or DEFAULT_ROLL_RULES) if r.get("enabled", True)]
 
 
-def build_roll_instructions(rules: Optional[list[dict]]) -> str:
-    """Render the system-prompt section that teaches the model the directive."""
-    active = _enabled_categories(rules)
-    if not active:
-        return ""
-
-    type_lines = []
+def _type_lines(active: list[dict]) -> str:
+    lines = []
     for r in active:
-        cat = r.get("category")
-        types = _CATEGORY_TYPES.get(cat, [])
+        types = _CATEGORY_TYPES.get(r.get("category"), [])
         if not types:
             continue
         tokens = " / ".join(types)
         dc = r.get("default_dc")
         dc_hint = f" (если не уверен в сложности — DC {dc})" if dc else ""
-        type_lines.append(f"- **{tokens}** — {r.get('name')}: {r.get('when')}{dc_hint}")
+        lines.append(f"- **{tokens}** — {r.get('name')}: {r.get('when')}{dc_hint}")
+    return "\n".join(lines)
 
-    types_block = "\n".join(type_lines)
+
+def build_roll_tools(rules: Optional[list[dict]] = None) -> list[dict]:
+    """OpenAI-style function schema for native tool-calling (Ollama `tools`)."""
+    active = _enabled_categories(rules)
+    types = []
+    for r in active:
+        types.extend(_CATEGORY_TYPES.get(r.get("category"), []))
+    if not types:
+        return []
+    return [{
+        "type": "function",
+        "function": {
+            "name": "request_roll",
+            "description": (
+                "Запросить у игрока бросок кубика, когда исход не предрешён "
+                "(спасбросок, атака, проверка навыка, инициатива). Сначала опиши "
+                "ситуацию в обычном тексте, затем вызови эту функцию и остановись — "
+                "НЕ описывай результат сам, его пришлёт система."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "actor": {"type": "string", "description": "Имя того, кто бросает"},
+                    "type": {"type": "string", "enum": types, "description": "Тип броска"},
+                    "dc": {"type": "integer", "description": "Сложность (DC) или КД цели; можно опустить"},
+                    "reason": {"type": "string", "description": "Кратко, зачем нужен бросок"},
+                },
+                "required": ["actor", "type"],
+            },
+        },
+    }]
+
+
+def spec_from_tool_args(args: dict) -> dict:
+    """Normalize request_roll tool arguments into a roll spec."""
+    return {
+        "actor": str(args.get("actor", "")).strip(),
+        "type": _normalize_type(str(args.get("type", ""))),
+        "dc": _to_int(args.get("dc")),
+        "reason": str(args.get("reason", "")).strip(),
+    }
+
+
+def build_roll_instructions(rules: Optional[list[dict]], use_tools: bool = False) -> str:
+    """Render the system-prompt section that teaches the model how to ask for rolls."""
+    active = _enabled_categories(rules)
+    if not active:
+        return ""
+
+    types_block = _type_lines(active)
+
+    if use_tools:
+        return f"""
+
+## Механика бросков — функция request_roll
+Ты НИКОГДА не решаешь сам, удался ли бросок, и НИКОГДА не выдумываешь, что выпало.
+Когда наступает момент, требующий броска:
+1. Опиши обстановку и напряжение ДО броска (обычным текстом), но НЕ исход.
+2. Вызови функцию **request_roll** с нужными параметрами и остановись.
+3. НЕ продолжай сцену и НЕ бросай за игрока — жди результат от системы.
+
+Когда какой тип запрашивать:
+{types_block}
+
+После строки «[Результат броска] …» продолжи повествование, опираясь ИМЕННО на этот исход."""
 
     return f"""
 
@@ -271,3 +330,86 @@ class DirectiveStreamFilter:
         # belongs to `tail`; `cleaned` shares the same prefix as `_full`.
         tail = cleaned[self._emitted:] if len(cleaned) >= self._emitted else ""
         return spec, cleaned, tail
+
+
+# ── Fallback: detect a roll request written in plain prose ────────────────────
+# Local models often ignore the directive format and instead just *write*
+# "сделай спасбросок Ловкости". When enforcement is on and no directive was
+# emitted, we scan the narration for such phrases so the gate still triggers.
+
+_STAT_ROOTS = [
+    (("ловк", "dexterity", "увёрт", "уверт", "акробат", "скрытн", "реакц"), "dex"),
+    (("сил", "strength", "атлет", "мускул"), "str"),
+    (("тел", "constitution", "выносл", "стойкост", "телосл", "отрав", "яд"), "con"),
+    (("интелл", "intelligence", "разум", "знани", "анализ", "логик"), "int"),
+    (("мудр", "wisdom", "восприят", "внимател", "проницат", "интуиц", "воля"), "wis"),
+    (("харизм", "charisma", "обаян", "убежд", "запугив", "обман", "выступл"), "cha"),
+]
+
+_ROLL_VERB_RE = re.compile(
+    r"брос(ь|ьте|ить|ок|ка|аем|айте)|кинь(те)?|сделай(те)?\s+(бросок|проверк)|"
+    r"проведи(те)?\s+проверк|\broll\b|\bd20\b",
+    re.IGNORECASE,
+)
+
+
+def _find_stat(text: str) -> Optional[str]:
+    for roots, code in _STAT_ROOTS:
+        for r in roots:
+            if r in text:
+                return code
+    return None
+
+
+def _type_category(roll_type: str) -> Optional[str]:
+    if roll_type.startswith("save_"):
+        return "save"
+    if roll_type.startswith("check_"):
+        return "check"
+    if roll_type in ("attack", "initiative"):
+        return roll_type
+    return None
+
+
+def apply_default_dc(spec: dict, rules: Optional[list[dict]] = None) -> dict:
+    """Fill in a DC from the matching rule when the GM didn't specify one."""
+    if not spec or spec.get("dc") is not None:
+        return spec
+    cat = _type_category(spec.get("type", ""))
+    for r in _enabled_categories(rules):
+        if r.get("category") == cat and r.get("default_dc"):
+            spec["dc"] = r["default_dc"]
+            break
+    return spec
+
+
+def detect_roll_request(text: str, rules: Optional[list[dict]] = None) -> Optional[dict]:
+    """Heuristically detect a roll the GM asked for in plain prose.
+
+    Returns a spec compatible with parse_directive(), or None. Only categories
+    that are enabled in `rules` can be detected, mirroring the directive path.
+    """
+    active = {r.get("category") for r in _enabled_categories(rules)}
+    low = (text or "").lower()
+    # Asks live near the end of the turn ("...— что делаешь? Сделай бросок.").
+    tail = low[-600:]
+
+    has_save = "спасброс" in tail or "spasbros" in tail or "saving throw" in tail
+    has_init = "инициатив" in tail
+    has_verb = bool(_ROLL_VERB_RE.search(tail))
+
+    if not (has_save or has_init or has_verb):
+        return None
+
+    if "save" in active and has_save:
+        return {"actor": "", "type": f"save_{_find_stat(tail) or 'dex'}", "dc": None, "reason": "спасбросок"}
+    if "initiative" in active and has_init:
+        return {"actor": "", "type": "initiative", "dc": None, "reason": "инициатива"}
+    if "check" in active and ("провер" in tail or "навык" in tail) and has_verb:
+        return {"actor": "", "type": f"check_{_find_stat(tail) or 'dex'}", "dc": None, "reason": "проверка"}
+    if "attack" in active and has_verb and ("атак" in tail or "попадан" in tail):
+        return {"actor": "", "type": "attack", "dc": None, "reason": "бросок атаки"}
+    if "check" in active and has_verb:
+        # Generic "брось кубик" with no specifics → an ability check.
+        return {"actor": "", "type": f"check_{_find_stat(tail) or 'dex'}", "dc": None, "reason": "бросок"}
+    return None
