@@ -187,7 +187,13 @@ async def stream_response(messages: list[dict]) -> AsyncGenerator[str, None]:
 
     async with httpx.AsyncClient(timeout=120.0) as client:
         async with client.stream("POST", url, json=payload) as response:
-            response.raise_for_status()
+            if response.status_code >= 400:
+                body = await response.aread()
+                try:
+                    detail = json.loads(body).get("error", body.decode("utf-8", errors="replace"))
+                except Exception:
+                    detail = body.decode("utf-8", errors="replace")
+                raise RuntimeError(f"Ollama {response.status_code}: {detail[:300]}")
             async for line in response.aiter_lines():
                 if not line.strip():
                     continue
@@ -221,3 +227,8 @@ async def check_connection() -> dict:
     except Exception as e:
         return {"ok": False, "error": str(e)}
     return {"ok": False, "error": "unexpected response"}
+
+
+async def list_models() -> list[str]:
+    result = await check_connection()
+    return result.get("models", [])

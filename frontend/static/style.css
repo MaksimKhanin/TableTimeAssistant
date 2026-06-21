@@ -360,24 +360,14 @@ html, body, #app {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 2px; }
 
-/* ── Template carousel ── */
+/* ── Template grid ── */
 #template-carousel {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
   gap: 10px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding-bottom: 8px;
-  min-height: 96px;
-  scroll-snap-type: x mandatory;
-  -webkit-overflow-scrolling: touch;
-  align-items: flex-start;
 }
-#template-carousel::-webkit-scrollbar { height: 3px; }
-#template-carousel::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 2px; }
 
 .tmpl-card {
-  flex-shrink: 0;
-  width: 180px;
   background: var(--surface);
   border: 1px solid var(--surface2);
   border-radius: var(--radius);

@@ -325,6 +325,11 @@ async def llm_status():
     return await llm_client.check_connection()
 
 
+@app.get("/api/llm/models")
+async def llm_models():
+    return await llm_client.list_models()
+
+
 # ── WebSocket Game Session ────────────────────────────────────────────────────
 
 @app.websocket("/ws/{adventure_id}")

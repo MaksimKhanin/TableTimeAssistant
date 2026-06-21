@@ -611,6 +611,22 @@ async function loadLLMSettings() {
     document.getElementById('llm-tokens').value = cfg.max_tokens;
     document.getElementById('llm-show-thinking').checked = cfg.show_thinking || false;
   } catch {}
+  await populateModelsList();
+}
+
+async function populateModelsList() {
+  const hint = document.getElementById('llm-models-hint');
+  const dl = document.getElementById('llm-models-list');
+  hint.textContent = 'Загрузка моделей...';
+  try {
+    const models = await api('GET', '/llm/models');
+    dl.innerHTML = models.map(m => `<option value="${esc(m)}">`).join('');
+    hint.textContent = models.length
+      ? `Доступно: ${models.length} моделей. Нажмите поле модели для выбора.`
+      : 'Модели не найдены. Проверьте URL и соединение.';
+  } catch {
+    hint.textContent = 'Не удалось загрузить список моделей.';
+  }
 }
 
 async function checkLLMStatus() {
@@ -762,6 +778,7 @@ document.addEventListener('DOMContentLoaded', () => {
     hideOverlay('settings');
   });
   document.getElementById('btn-check-llm').addEventListener('click', checkLLMStatus);
+  document.getElementById('btn-load-models').addEventListener('click', populateModelsList);
 
   // Init
   buildCharacterForms(3);

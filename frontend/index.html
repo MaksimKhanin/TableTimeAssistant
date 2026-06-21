@@ -114,7 +114,12 @@
         </div>
         <div class="form-group">
           <label>Модель</label>
-          <input id="llm-model" type="text" placeholder="llama3" />
+          <div style="display:flex;gap:8px">
+            <input id="llm-model" type="text" list="llm-models-list" placeholder="llama3" style="flex:1" />
+            <button class="btn-secondary" id="btn-load-models" style="white-space:nowrap;padding:6px 12px">Загрузить</button>
+          </div>
+          <datalist id="llm-models-list"></datalist>
+          <div id="llm-models-hint" style="font-size:12px;color:var(--text-dim);margin-top:4px"></div>
         </div>
         <div class="form-group">
           <label>Температура (0.1–2.0)</label>
