@@ -126,6 +126,8 @@ def _resolve_char_roll(char, roll_type, target_ac=None, damage_dice=None,
         text = dnd.format_roll_result(r, f"Атака {char.name}")
         if target_ac is not None:
             text += f" vs КД {target_ac} → {'**ПОПАДАНИЕ**' if hit else 'промах'}"
+        if hit and not r["critical"]:
+            text += " (обычный удар, НЕ критический)"
         return text, {**r, "hit": hit}
 
     if roll_type == "damage":
@@ -166,6 +168,8 @@ def _resolve_npc_roll(npc, roll_type, target_ac=None, damage_dice=None,
         text = dnd.format_roll_result(r, f"Атака {npc.name}")
         if target_ac is not None:
             text += f" vs КД {target_ac} → {'**ПОПАДАНИЕ**' if hit else 'промах'}"
+        if hit and not r["critical"]:
+            text += " (обычный удар, НЕ критический)"
         return text, {**r, "hit": hit}
 
     if roll_type == "damage":
@@ -196,6 +200,40 @@ def _resolve_npc_roll(npc, roll_type, target_ac=None, damage_dice=None,
     sides = int(roll_type.replace("d", "") or 20)
     val = manual_total if manual_total is not None else dnd.roll(sides)[0]
     return f"🎲 {npc.name} d{sides} = **{val}**", {"total": val}
+
+
+def _resolve_actor(adventure, name: str):
+    """Match a roll's actor name to a concrete entity.
+    Returns ("char", obj) | ("npc", obj) | (None, None)."""
+    if not name:
+        return None, None
+    want = name.strip().lower()
+    chars = list(adventure.characters)
+    npcs = list(adventure.npcs)
+    # Exact (case-insensitive) first, then prefix/contains.
+    for matcher in (
+        lambda n: n == want,
+        lambda n: n.startswith(want) or want.startswith(n),
+        lambda n: want in n or n in want,
+    ):
+        for c in chars:
+            if matcher(c.name.strip().lower()):
+                return "char", c
+        for n in npcs:
+            if matcher(n.name.strip().lower()):
+                return "npc", n
+    return None, None
+
+
+@app.get("/api/char-rules")
+def char_rules():
+    """Point-buy limits for character creation (no levels)."""
+    return {
+        "stat_keys": dnd.STAT_KEYS,
+        "stat_min": dnd.STAT_MIN,
+        "stat_max": dnd.STAT_MAX,
+        "point_budget": dnd.POINT_BUDGET,
+    }
 
 
 @app.post("/api/adventures/{adventure_id}/roll")
@@ -403,7 +441,7 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
             chars = [
                 {
                     "name": c.name, "race": c.race, "char_class": c.char_class,
-                    "level": c.level, "current_hp": c.current_hp, "max_hp": c.max_hp,
+                    "current_hp": c.current_hp, "max_hp": c.max_hp,
                     "armor_class": c.armor_class, "abilities": c.abilities, "background": c.background,
                 }
                 for c in adventure.characters
@@ -474,9 +512,29 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
             await websocket.send_json({"type": "done"})
             return cleaned, spec
 
-        async def generate_turn(msgs: list):
-            """Run one GM turn: stream it, persist it, and — if the GM requested a
-            roll and enforcement is on — block the session awaiting the result."""
+        async def record_dice(text: str, roll_data: dict, actor_name: str):
+            """Persist a dice result, show it to the client, feed it back to the model."""
+            db.add(models.Message(
+                adventure_id=adventure_id, role="dice",
+                content=text, player_name=actor_name, metadata_=roll_data,
+            ))
+            db.commit()
+            await websocket.send_json({"type": "dice_result", "content": text})
+            messages.append({"role": "user", "content": f"[Результат броска] {text}"})
+
+        async def auto_roll_npc(npc, spec: dict):
+            """Enemies and NPCs roll automatically. A successful attack auto-rolls damage too."""
+            rtype = spec.get("type", "save_dex")
+            text, rdata = _resolve_npc_roll(npc, rtype, spec.get("dc"))
+            await record_dice(text, rdata, npc.name)
+            if rtype == "attack" and rdata.get("hit"):
+                dtext, ddata = _resolve_npc_roll(npc, "damage", None)
+                await record_dice(dtext, ddata, npc.name)
+
+        async def generate_turn(msgs: list, _depth: int = 0):
+            """Run one GM turn: stream it, persist it, and resolve any requested roll.
+            NPC rolls auto-resolve server-side (and chain into the next turn); a player
+            roll blocks the session (pending_roll) and is locked to the named character."""
             await websocket.send_json({"type": "thinking"})
             cleaned, spec = await _stream_to_ws(msgs)
             if roll_enforcement:
@@ -486,13 +544,31 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
                 if spec is not None:
                     spec = roll_directive.apply_default_dc(spec, roll_rules)
             db.add(models.Message(adventure_id=adventure_id, role="assistant", content=cleaned))
-            pending = spec if (spec and roll_enforcement) else None
-            adventure.pending_roll = pending
-            db.commit()
             msgs.append({"role": "assistant", "content": cleaned})
-            if pending:
-                await websocket.send_json({"type": "roll_required", "spec": pending})
-            return pending
+
+            if not (spec and roll_enforcement):
+                adventure.pending_roll = None
+                db.commit()
+                return
+
+            actor_kind, actor = _resolve_actor(adventure, spec.get("actor"))
+            if actor_kind == "npc":
+                # The player never rolls for enemies/allies — auto-resolve and continue.
+                adventure.pending_roll = None
+                db.commit()
+                await auto_roll_npc(actor, spec)
+                if _depth < 6:
+                    await generate_turn(msgs, _depth + 1)
+                return
+
+            # Player character (or unresolved name → player chooses among PCs).
+            spec["actor_type"] = "char"
+            spec["actor_id"] = actor.id if actor else None
+            spec["actor_name"] = actor.name if actor else ""
+            spec["locked"] = actor is not None
+            adventure.pending_roll = spec
+            db.commit()
+            await websocket.send_json({"type": "roll_required", "spec": spec})
 
         if not history:
             messages.append(OPENING_TRIGGER)
@@ -550,40 +626,41 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
                 if not adventure.pending_roll:
                     continue
 
-                actor_type = data.get("actor_type", "char")
+                # Players only ever roll for their own characters.
                 actor_id = data.get("actor_id")
                 roll_type = data.get("roll_type", "save_dex")
                 dc = data.get("dc")
                 manual_die = data.get("manual_die")
                 manual_total = data.get("manual_total")
 
+                actor = db.get(models.Character, actor_id)
+                if not actor or actor.adventure_id != adventure_id:
+                    await websocket.send_json({"type": "error", "message": "Персонаж не найден"})
+                    continue
                 try:
-                    if actor_type == "npc":
-                        actor = db.get(models.Npc, actor_id)
-                        if not actor or actor.adventure_id != adventure_id:
-                            raise ValueError("NPC не найден")
-                        text, roll_data = _resolve_npc_roll(
-                            actor, roll_type, dc, None, manual_die, manual_total)
-                    else:
-                        actor = db.get(models.Character, actor_id)
-                        if not actor or actor.adventure_id != adventure_id:
-                            raise ValueError("Персонаж не найден")
-                        text, roll_data = _resolve_char_roll(
-                            actor, roll_type, dc, None, manual_die, manual_total)
+                    text, roll_data = _resolve_char_roll(
+                        actor, roll_type, dc, None, manual_die, manual_total)
                 except Exception as e:
                     await websocket.send_json({"type": "error", "message": f"Ошибка броска: {e}"})
                     continue
 
-                db.add(models.Message(
-                    adventure_id=adventure_id, role="dice",
-                    content=text, player_name=actor.name, metadata_=roll_data,
-                ))
-                adventure.pending_roll = None
-                db.commit()
+                await record_dice(text, roll_data, actor.name)
 
-                await websocket.send_json({"type": "dice_result", "content": text})
-                messages.append({"role": "user", "content": f"[Результат броска] {text}"})
-                await generate_turn(messages)
+                # Successful attack → immediately require a damage roll from the same character.
+                if roll_type == "attack" and roll_data.get("hit"):
+                    dmg_spec = {
+                        "actor": actor.name, "type": "damage", "dc": None,
+                        "reason": f"урон от попадания ({actor.name})",
+                        "actor_type": "char", "actor_id": actor.id,
+                        "actor_name": actor.name, "locked": True,
+                    }
+                    adventure.pending_roll = dmg_spec
+                    db.commit()
+                    await websocket.send_json({"type": "roll_required", "spec": dmg_spec})
+                else:
+                    adventure.pending_roll = None
+                    db.commit()
+                    await generate_turn(messages)
 
             elif msg_type == "cancel_roll":
                 # Player chose a different action instead of rolling — lift the gate.

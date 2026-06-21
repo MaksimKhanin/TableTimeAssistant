@@ -1,13 +1,14 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional
 from datetime import datetime
 
+import dnd
 
-class CharacterCreate(BaseModel):
+
+class CharacterBase(BaseModel):
     name: str
     race: str = "Human"
     char_class: str = "Fighter"
-    level: int = 1
     strength: int = 10
     dexterity: int = 10
     constitution: int = 10
@@ -22,7 +23,21 @@ class CharacterCreate(BaseModel):
     background: str = ""
 
 
-class CharacterOut(CharacterCreate):
+class CharacterCreate(CharacterBase):
+    @model_validator(mode="after")
+    def _check_point_budget(self):
+        stats = [getattr(self, k) for k in dnd.STAT_KEYS]
+        for s in stats:
+            if s < dnd.STAT_MIN or s > dnd.STAT_MAX:
+                raise ValueError(f"Каждая характеристика должна быть от {dnd.STAT_MIN} до {dnd.STAT_MAX}")
+        if sum(stats) > dnd.POINT_BUDGET:
+            raise ValueError(
+                f"Сумма характеристик {sum(stats)} превышает лимит {dnd.POINT_BUDGET}"
+            )
+        return self
+
+
+class CharacterOut(CharacterBase):
     id: int
     adventure_id: int
     current_hp: int

@@ -1,6 +1,12 @@
 import random
 from typing import Optional
 
+# ── Character build rules (point-buy, no levels) ──────────────────────────────
+STAT_KEYS = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"]
+STAT_MIN = 3
+STAT_MAX = 20
+POINT_BUDGET = 90   # max total of the six ability scores a character may spend
+
 
 def roll(sides: int, count: int = 1) -> list[int]:
     return [random.randint(1, sides) for _ in range(count)]
