@@ -379,7 +379,14 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
             models.Message.role.in_(["user", "assistant"]),
         ).order_by(models.Message.created_at).all()
 
+        # Some model templates (e.g. Qwen3) require at least one user message.
+        # If history starts with an assistant opening narration, inject the
+        # silent trigger so the conversation structure is always valid.
+        OPENING_TRIGGER = {"role": "user", "content": "Начни приключение."}
+
         messages = [{"role": "system", "content": system_prompt}]
+        if history and history[0].role == "assistant":
+            messages.append(OPENING_TRIGGER)
         for h in history:
             messages.append({"role": h.role, "content": h.content})
 
@@ -407,6 +414,7 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
             return full_text
 
         if not history:
+            messages.append(OPENING_TRIGGER)
             await websocket.send_json({"type": "thinking"})
             full_response = await _stream_to_ws(messages)
             db.add(models.Message(adventure_id=adventure_id, role="assistant", content=full_response))
