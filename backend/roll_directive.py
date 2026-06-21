@@ -271,3 +271,86 @@ class DirectiveStreamFilter:
         # belongs to `tail`; `cleaned` shares the same prefix as `_full`.
         tail = cleaned[self._emitted:] if len(cleaned) >= self._emitted else ""
         return spec, cleaned, tail
+
+
+# ── Fallback: detect a roll request written in plain prose ────────────────────
+# Local models often ignore the directive format and instead just *write*
+# "сделай спасбросок Ловкости". When enforcement is on and no directive was
+# emitted, we scan the narration for such phrases so the gate still triggers.
+
+_STAT_ROOTS = [
+    (("ловк", "dexterity", "увёрт", "уверт", "акробат", "скрытн", "реакц"), "dex"),
+    (("сил", "strength", "атлет", "мускул"), "str"),
+    (("тел", "constitution", "выносл", "стойкост", "телосл", "отрав", "яд"), "con"),
+    (("интелл", "intelligence", "разум", "знани", "анализ", "логик"), "int"),
+    (("мудр", "wisdom", "восприят", "внимател", "проницат", "интуиц", "воля"), "wis"),
+    (("харизм", "charisma", "обаян", "убежд", "запугив", "обман", "выступл"), "cha"),
+]
+
+_ROLL_VERB_RE = re.compile(
+    r"брос(ь|ьте|ить|ок|ка|аем|айте)|кинь(те)?|сделай(те)?\s+(бросок|проверк)|"
+    r"проведи(те)?\s+проверк|\broll\b|\bd20\b",
+    re.IGNORECASE,
+)
+
+
+def _find_stat(text: str) -> Optional[str]:
+    for roots, code in _STAT_ROOTS:
+        for r in roots:
+            if r in text:
+                return code
+    return None
+
+
+def _type_category(roll_type: str) -> Optional[str]:
+    if roll_type.startswith("save_"):
+        return "save"
+    if roll_type.startswith("check_"):
+        return "check"
+    if roll_type in ("attack", "initiative"):
+        return roll_type
+    return None
+
+
+def apply_default_dc(spec: dict, rules: Optional[list[dict]] = None) -> dict:
+    """Fill in a DC from the matching rule when the GM didn't specify one."""
+    if not spec or spec.get("dc") is not None:
+        return spec
+    cat = _type_category(spec.get("type", ""))
+    for r in _enabled_categories(rules):
+        if r.get("category") == cat and r.get("default_dc"):
+            spec["dc"] = r["default_dc"]
+            break
+    return spec
+
+
+def detect_roll_request(text: str, rules: Optional[list[dict]] = None) -> Optional[dict]:
+    """Heuristically detect a roll the GM asked for in plain prose.
+
+    Returns a spec compatible with parse_directive(), or None. Only categories
+    that are enabled in `rules` can be detected, mirroring the directive path.
+    """
+    active = {r.get("category") for r in _enabled_categories(rules)}
+    low = (text or "").lower()
+    # Asks live near the end of the turn ("...— что делаешь? Сделай бросок.").
+    tail = low[-600:]
+
+    has_save = "спасброс" in tail or "spasbros" in tail or "saving throw" in tail
+    has_init = "инициатив" in tail
+    has_verb = bool(_ROLL_VERB_RE.search(tail))
+
+    if not (has_save or has_init or has_verb):
+        return None
+
+    if "save" in active and has_save:
+        return {"actor": "", "type": f"save_{_find_stat(tail) or 'dex'}", "dc": None, "reason": "спасбросок"}
+    if "initiative" in active and has_init:
+        return {"actor": "", "type": "initiative", "dc": None, "reason": "инициатива"}
+    if "check" in active and ("провер" in tail or "навык" in tail) and has_verb:
+        return {"actor": "", "type": f"check_{_find_stat(tail) or 'dex'}", "dc": None, "reason": "проверка"}
+    if "attack" in active and has_verb and ("атак" in tail or "попадан" in tail):
+        return {"actor": "", "type": "attack", "dc": None, "reason": "бросок атаки"}
+    if "check" in active and has_verb:
+        # Generic "брось кубик" with no specifics → an ability check.
+        return {"actor": "", "type": f"check_{_find_stat(tail) or 'dex'}", "dc": None, "reason": "бросок"}
+    return None

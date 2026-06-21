@@ -8,7 +8,7 @@ import roll_directive
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "http://localhost:11434")
 LLM_MODEL = os.environ.get("LLM_MODEL", "llama3")
 LLM_TEMPERATURE = float(os.environ.get("LLM_TEMPERATURE", "0.8"))
-LLM_MAX_TOKENS = int(os.environ.get("LLM_MAX_TOKENS", "1024"))
+LLM_MAX_TOKENS = int(os.environ.get("LLM_MAX_TOKENS", "2048"))
 
 _CONFIG_PATH = os.path.join(os.path.dirname(__file__), "llm_config.json")
 
@@ -207,64 +207,108 @@ class ThinkFilter:
 
 
 async def stream_response(messages: list[dict]) -> AsyncGenerator[tuple[str, str], None]:
-    """Yields (kind, text) tuples where kind is 'text' or 'think'."""
+    """Yields (kind, text) tuples where kind is 'text' or 'think'.
+
+    Two robustness behaviours:
+      * Auto-continuation — if Ollama stops because it hit the token budget
+        (done_reason == "length"), we transparently re-prompt it to resume so
+        long narrations are not cut off mid-sentence.
+      * Thinking budget — thinking is requested only on the first round. Native
+        <think> tokens share the num_predict budget, so a model that "thinks"
+        a lot could exhaust it and never emit an answer; the continuation round
+        runs with think=false to force the actual reply.
+    """
     cfg = get_config()
     show_thinking = cfg.get("show_thinking", False)
     url = f"{cfg['base_url']}/api/chat"
 
-    payload = {
-        "model": cfg["model"],
-        "messages": messages,
-        "stream": True,
-        "think": show_thinking,   # Ollama native: disables <think> blocks when False
-        "options": {
-            "temperature": cfg["temperature"],
-            "num_predict": cfg["max_tokens"],
-        },
-    }
+    work = list(messages)
+    MAX_CONTINUATIONS = 3
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        async with client.stream("POST", url, json=payload) as response:
-            if response.status_code >= 400:
-                body = await response.aread()
-                try:
-                    detail = json.loads(body).get("error", body.decode("utf-8", errors="replace"))
-                except Exception:
-                    detail = body.decode("utf-8", errors="replace")
-                raise RuntimeError(f"Ollama {response.status_code}: {detail[:300]}")
+    for attempt in range(MAX_CONTINUATIONS + 1):
+        payload = {
+            "model": cfg["model"],
+            "messages": work,
+            "stream": True,
+            # Only think on the first pass; continuations must spend the budget on the answer.
+            "think": show_thinking and attempt == 0,
+            "options": {
+                "temperature": cfg["temperature"],
+                "num_predict": cfg["max_tokens"],
+            },
+        }
 
-            filt = ThinkFilter()
-            got_native_thinking = False
-            async for line in response.aiter_lines():
-                if not line.strip():
-                    continue
-                try:
-                    data = json.loads(line)
+        finish_reason = "stop"
+        had_thinking = False
+        round_text = ""
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            async with client.stream("POST", url, json=payload) as response:
+                if response.status_code >= 400:
+                    body = await response.aread()
+                    try:
+                        detail = json.loads(body).get("error", body.decode("utf-8", errors="replace"))
+                    except Exception:
+                        detail = body.decode("utf-8", errors="replace")
+                    raise RuntimeError(f"Ollama {response.status_code}: {detail[:300]}")
+
+                filt = ThinkFilter()
+                got_native_thinking = False
+                async for line in response.aiter_lines():
+                    if not line.strip():
+                        continue
+                    try:
+                        data = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
                     msg = data.get("message", {})
 
                     # Ollama native thinking field (Ollama ≥0.9 with think:true)
                     thinking = msg.get("thinking") or ""
                     if thinking:
                         got_native_thinking = True
+                        had_thinking = True
                         yield ("think", thinking)
 
                     content = msg.get("content") or ""
                     if content:
                         if got_native_thinking:
                             # Native thinking already separated: content is the actual response
+                            round_text += content
                             yield ("text", content)
                         else:
                             # Fallback: model embeds <think> tags inside content stream
                             for kind, text in filt.feed(content):
+                                if kind == "text":
+                                    round_text += text
+                                else:
+                                    had_thinking = True
                                 yield (kind, text)
 
                     if data.get("done"):
+                        finish_reason = data.get("done_reason") or "stop"
                         if not got_native_thinking:
                             for kind, text in filt.flush():
+                                if kind == "text":
+                                    round_text += text
+                                else:
+                                    had_thinking = True
                                 yield (kind, text)
                         break
-                except json.JSONDecodeError:
-                    continue
+
+        truncated = finish_reason == "length"
+        think_only = had_thinking and not round_text.strip()
+        if not (truncated or think_only) or attempt == MAX_CONTINUATIONS:
+            break
+
+        if round_text.strip():
+            # Resume exactly where the model left off.
+            work = work + [
+                {"role": "assistant", "content": round_text},
+                {"role": "user", "content": "Продолжи ровно с места обрыва — не повторяй уже написанное и не начинай заново."},
+            ]
+        # else: the round was thinking-only with no answer — retry the same
+        # messages with think disabled (attempt > 0) to force a reply.
 
 
 async def get_full_response(messages: list[dict]) -> str:

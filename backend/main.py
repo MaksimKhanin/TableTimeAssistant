@@ -468,6 +468,12 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
             roll and enforcement is on — block the session awaiting the result."""
             await websocket.send_json({"type": "thinking"})
             cleaned, spec = await _stream_to_ws(msgs)
+            if roll_enforcement:
+                # Fall back to prose detection when the model skipped the directive.
+                if spec is None:
+                    spec = roll_directive.detect_roll_request(cleaned, roll_rules)
+                if spec is not None:
+                    spec = roll_directive.apply_default_dc(spec, roll_rules)
             db.add(models.Message(adventure_id=adventure_id, role="assistant", content=cleaned))
             pending = spec if (spec and roll_enforcement) else None
             adventure.pending_roll = pending
