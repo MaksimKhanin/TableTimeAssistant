@@ -392,17 +392,9 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
 
         async def _stream_to_ws(msgs: list) -> str:
             show_thinking = llm_client.get_config().get("show_thinking", False)
-            filt = llm_client.ThinkFilter()
             think_buf = ""
             full_text = ""
-            async for raw_chunk in llm_client.stream_response(msgs):
-                for kind, text in filt.feed(raw_chunk):
-                    if kind == "think":
-                        think_buf += text
-                    else:
-                        full_text += text
-                        await websocket.send_json({"type": "chunk", "content": text})
-            for kind, text in filt.flush():
+            async for kind, text in llm_client.stream_response(msgs):
                 if kind == "think":
                     think_buf += text
                 else:

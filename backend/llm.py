@@ -188,19 +188,29 @@ class ThinkFilter:
 
     def flush(self):
         """Call after stream ends to emit any buffered remainder."""
-        if self._buf and self._state != "in_think":
-            yield ("text", self._buf)
+        if self._buf:
+            if self._state == "in_think":
+                # Stream ended inside an unclosed <think> block — yield what we have
+                open_end = self._buf.find(self._OPEN)
+                content = self._buf[open_end + len(self._OPEN):] if open_end >= 0 else self._buf
+                if content:
+                    yield ("think", content)
+            else:
+                yield ("text", self._buf)
         self._buf = ""
 
 
-async def stream_response(messages: list[dict]) -> AsyncGenerator[str, None]:
+async def stream_response(messages: list[dict]) -> AsyncGenerator[tuple[str, str], None]:
+    """Yields (kind, text) tuples where kind is 'text' or 'think'."""
     cfg = get_config()
+    show_thinking = cfg.get("show_thinking", False)
     url = f"{cfg['base_url']}/api/chat"
 
     payload = {
         "model": cfg["model"],
         "messages": messages,
         "stream": True,
+        "think": show_thinking,   # Ollama native: disables <think> blocks when False
         "options": {
             "temperature": cfg["temperature"],
             "num_predict": cfg["max_tokens"],
@@ -216,16 +226,29 @@ async def stream_response(messages: list[dict]) -> AsyncGenerator[str, None]:
                 except Exception:
                     detail = body.decode("utf-8", errors="replace")
                 raise RuntimeError(f"Ollama {response.status_code}: {detail[:300]}")
+
+            filt = ThinkFilter()
             async for line in response.aiter_lines():
                 if not line.strip():
                     continue
                 try:
                     data = json.loads(line)
-                    if "message" in data and "content" in data["message"]:
-                        chunk = data["message"]["content"]
-                        if chunk:
-                            yield chunk
+                    msg = data.get("message", {})
+
+                    # Ollama native thinking field (Ollama ≥0.9 with think:true)
+                    thinking = msg.get("thinking") or ""
+                    if thinking:
+                        yield ("think", thinking)
+
+                    # Regular content (may still contain <think> tags on older Ollama)
+                    content = msg.get("content") or ""
+                    if content:
+                        for kind, text in filt.feed(content):
+                            yield (kind, text)
+
                     if data.get("done"):
+                        for kind, text in filt.flush():
+                            yield (kind, text)
                         break
                 except json.JSONDecodeError:
                     continue
@@ -233,8 +256,9 @@ async def stream_response(messages: list[dict]) -> AsyncGenerator[str, None]:
 
 async def get_full_response(messages: list[dict]) -> str:
     parts = []
-    async for chunk in stream_response(messages):
-        parts.append(chunk)
+    async for kind, text in stream_response(messages):
+        if kind == "text":
+            parts.append(text)
     return "".join(parts)
 
 
