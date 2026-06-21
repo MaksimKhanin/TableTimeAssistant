@@ -462,6 +462,30 @@ html, body, #app {
   cursor: pointer;
 }
 
+/* ── Roll rule editor cards ── */
+.roll-rule-card {
+  background: var(--surface);
+  border: 1px solid #3a2200;
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.roll-rule-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.roll-rule-card .remove-btn {
+  background: none;
+  border: none;
+  color: var(--danger);
+  font-size: 16px;
+  cursor: pointer;
+}
+
 /* ── Party panel NPC section ── */
 .panel-section-title {
   font-size: 12px;

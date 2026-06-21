@@ -13,6 +13,9 @@ class Adventure(Base):
     gm_role = Column(String(100), default="Dungeon Master")
     player_count = Column(Integer, nullable=False)
     status = Column(String(20), default="active")  # active, paused, completed
+    # When set, the session is blocked waiting for a player dice roll. Holds the
+    # roll spec parsed from the LLM directive: {actor, type, dc, reason}.
+    pending_roll = Column(JSON, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -108,3 +111,7 @@ class PromptConfig(Base):
     id = Column(Integer, primary_key=True, default=1)
     system_addendum = Column(Text, default="")     # appended to every system prompt
     turn_reminder = Column(Text, default="")       # injected into each player message
+    # Dice-validation: when enabled, the GM must request rolls via directives and
+    # the session blocks until the player submits a result.
+    roll_enforcement = Column(Boolean, default=True)
+    roll_rules_json = Column(JSON, default=list)   # customizable trigger rules

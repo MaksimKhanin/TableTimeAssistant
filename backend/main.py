@@ -10,6 +10,7 @@ import os
 import models
 import schemas
 import dnd
+import roll_directive
 import llm as llm_client
 from database import get_db, init_db
 
@@ -100,17 +101,27 @@ def get_messages(adventure_id: int, db: Session = Depends(get_db)):
 
 # ── Player Dice Rolls ─────────────────────────────────────────────────────────
 
-def _resolve_char_roll(char, roll_type, target_ac, damage_dice):
+_STAT_LABEL = {"str": "СИЛ", "dex": "ЛОВ", "con": "ТЕЛ", "int": "ИНТ", "wis": "МДР", "cha": "ХАР"}
+
+
+def _char_stat(char, code: str) -> int:
+    return {
+        "str": char.strength, "dex": char.dexterity, "con": char.constitution,
+        "int": char.intelligence, "wis": char.wisdom, "cha": char.charisma,
+    }.get(code, char.strength)
+
+
+def _resolve_char_roll(char, roll_type, target_ac=None, damage_dice=None,
+                       manual_die=None, manual_total=None):
+    """Resolve a player roll. In hybrid mode the player may pass `manual_die`
+    (the d20 face they physically rolled) or `manual_total` (a typed sum);
+    otherwise the die is rolled randomly."""
     if roll_type == "initiative":
-        r = dnd.roll_initiative(char.dexterity)
-        text = dnd.format_roll_result(
-            {"die": r - dnd.modifier_from_stat(char.dexterity), "bonus": dnd.modifier_from_stat(char.dexterity), "total": r},
-            f"Инициатива {char.name}",
-        )
-        return text, {"type": "initiative", "total": r}
+        r = dnd.roll_initiative(char.dexterity, die=manual_die)
+        return dnd.format_roll_result(r, f"Инициатива {char.name}"), {"type": "initiative", **r}
 
     if roll_type == "attack":
-        r = dnd.roll_attack(char.attack_bonus)
+        r = dnd.roll_attack(char.attack_bonus, die=manual_die)
         hit = target_ac is None or r["total"] >= target_ac
         text = dnd.format_roll_result(r, f"Атака {char.name}")
         if target_ac is not None:
@@ -119,28 +130,72 @@ def _resolve_char_roll(char, roll_type, target_ac, damage_dice):
 
     if roll_type == "damage":
         dice = damage_dice or char.damage_dice
-        r = dnd.roll_damage(dice, dnd.modifier_from_stat(char.strength))
+        r = dnd.roll_damage(dice, dnd.modifier_from_stat(char.strength), manual_total=manual_total)
         return dnd.format_roll_result(r, f"Урон {char.name}"), r
 
-    if roll_type.startswith("save_"):
-        stat_map = {
-            "save_str": char.strength, "save_dex": char.dexterity,
-            "save_con": char.constitution, "save_int": char.intelligence,
-            "save_wis": char.wisdom, "save_cha": char.charisma,
-        }
-        stat = stat_map.get(roll_type, char.strength)
-        dc = target_ac or 12
-        r = dnd.roll_saving_throw(stat, dc)
-        name = roll_type.replace("save_", "").upper()
+    if roll_type.startswith("save_") or roll_type.startswith("check_"):
+        is_check = roll_type.startswith("check_")
+        code = roll_type.split("_", 1)[1]
+        stat = _char_stat(char, code)
+        dc = target_ac if target_ac is not None else 12
+        if is_check:
+            r = dnd.roll_ability_check(stat, dc, die=manual_die)
+            kind = "Проверка"
+        else:
+            r = dnd.roll_saving_throw(stat, dc, die=manual_die)
+            kind = "Спасбросок"
+        label = _STAT_LABEL.get(code, code.upper())
         text = (
-            f"**Спасбросок {name} {char.name}**: 🎲 d20={r['die']} + {r['modifier']} = **{r['total']}**"
+            f"**{kind} {label} {char.name}**: 🎲 d20={r['die']} + {r['modifier']} = **{r['total']}**"
             f" vs DC {dc} → {'✅ Успех' if r['success'] else '❌ Провал'}"
         )
         return text, r
 
     sides = int(roll_type.replace("d", "") or 20)
-    val = dnd.roll(sides)[0]
+    val = manual_total if manual_total is not None else dnd.roll(sides)[0]
     return f"🎲 d{sides} = **{val}**", {"total": val}
+
+
+def _resolve_npc_roll(npc, roll_type, target_ac=None, damage_dice=None,
+                      manual_die=None, manual_total=None):
+    """Resolve an NPC/enemy roll. NPCs carry no ability scores, so saves and
+    checks use a flat +2 modifier."""
+    if roll_type == "attack":
+        r = dnd.roll_attack(npc.attack_bonus, die=manual_die)
+        hit = target_ac is None or r["total"] >= target_ac
+        text = dnd.format_roll_result(r, f"Атака {npc.name}")
+        if target_ac is not None:
+            text += f" vs КД {target_ac} → {'**ПОПАДАНИЕ**' if hit else 'промах'}"
+        return text, {**r, "hit": hit}
+
+    if roll_type == "damage":
+        dice = damage_dice or npc.damage_dice
+        r = dnd.roll_damage(dice, manual_total=manual_total)
+        return dnd.format_roll_result(r, f"Урон {npc.name}"), r
+
+    if roll_type == "initiative":
+        d = dnd._d20(manual_die)
+        return f"**Инициатива {npc.name}**: 🎲 d20 = **{d}**", {"type": "initiative", "die": d, "total": d}
+
+    if roll_type.startswith("save_") or roll_type.startswith("check_"):
+        is_check = roll_type.startswith("check_")
+        code = roll_type.split("_", 1)[1]
+        mod = 2
+        dc = target_ac if target_ac is not None else 12
+        d = dnd._d20(manual_die)
+        total = d + mod
+        success = total >= dc
+        label = _STAT_LABEL.get(code, code.upper())
+        kind = "Проверка" if is_check else "Спасбросок"
+        text = (
+            f"**{kind} {label} {npc.name}**: 🎲 d20={d} + {mod} = **{total}**"
+            f" vs DC {dc} → {'✅ Успех' if success else '❌ Провал'}"
+        )
+        return text, {"die": d, "modifier": mod, "total": total, "dc": dc, "success": success}
+
+    sides = int(roll_type.replace("d", "") or 20)
+    val = manual_total if manual_total is not None else dnd.roll(sides)[0]
+    return f"🎲 {npc.name} d{sides} = **{val}**", {"total": val}
 
 
 @app.post("/api/adventures/{adventure_id}/roll")
@@ -165,27 +220,7 @@ def npc_dice_roll(adventure_id: int, req: schemas.NpcRollRequest, db: Session = 
     if not npc or npc.adventure_id != adventure_id:
         raise HTTPException(404, "NPC не найден")
 
-    if req.roll_type == "attack":
-        r = dnd.roll_attack(npc.attack_bonus)
-        hit = req.target_ac is None or r["total"] >= req.target_ac
-        text = dnd.format_roll_result(r, f"Атака {npc.name}")
-        if req.target_ac is not None:
-            text += f" vs КД {req.target_ac} → {'**ПОПАДАНИЕ**' if hit else 'промах'}"
-        roll_data = {**r, "hit": hit}
-    elif req.roll_type == "damage":
-        dice = req.damage_dice or npc.damage_dice
-        r = dnd.roll_damage(dice)
-        text = dnd.format_roll_result(r, f"Урон {npc.name}")
-        roll_data = r
-    elif req.roll_type == "initiative":
-        val = dnd.roll(20)[0]
-        text = f"**Инициатива {npc.name}**: 🎲 d20 = **{val}**"
-        roll_data = {"type": "initiative", "total": val}
-    else:
-        sides = int(req.roll_type.replace("d", "") or 20)
-        val = dnd.roll(sides)[0]
-        text = f"🎲 {npc.name} d{sides} = **{val}**"
-        roll_data = {"total": val}
+    text, roll_data = _resolve_npc_roll(npc, req.roll_type, req.target_ac, req.damage_dice)
 
     db.add(models.Message(
         adventure_id=adventure_id, role="dice",
@@ -291,20 +326,30 @@ def delete_template(template_id: int, db: Session = Depends(get_db)):
 
 # ── Prompt Config ─────────────────────────────────────────────────────────────
 
-@app.get("/api/prompt-config", response_model=schemas.PromptConfigOut)
+def _prompt_config_dict(cfg) -> dict:
+    return {
+        "system_addendum": cfg.system_addendum or "",
+        "turn_reminder": cfg.turn_reminder or "",
+        "roll_enforcement": bool(cfg.roll_enforcement),
+        "roll_rules": cfg.roll_rules_json or roll_directive.DEFAULT_ROLL_RULES,
+    }
+
+
+@app.get("/api/prompt-config")
 def get_prompt_config(db: Session = Depends(get_db)):
-    cfg = db.get(models.PromptConfig, 1)
-    return cfg
+    return _prompt_config_dict(db.get(models.PromptConfig, 1))
 
 
-@app.put("/api/prompt-config", response_model=schemas.PromptConfigOut)
+@app.put("/api/prompt-config")
 def update_prompt_config(data: schemas.PromptConfigUpdate, db: Session = Depends(get_db)):
     cfg = db.get(models.PromptConfig, 1)
     cfg.system_addendum = data.system_addendum
     cfg.turn_reminder = data.turn_reminder
+    cfg.roll_enforcement = data.roll_enforcement
+    cfg.roll_rules_json = [r.model_dump() for r in data.roll_rules]
     db.commit()
     db.refresh(cfg)
-    return cfg
+    return _prompt_config_dict(cfg)
 
 
 # ── LLM Config ────────────────────────────────────────────────────────────────
@@ -348,6 +393,8 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
         prompt_cfg = db.get(models.PromptConfig, 1)
         system_addendum = prompt_cfg.system_addendum if prompt_cfg else ""
         turn_reminder = prompt_cfg.turn_reminder if prompt_cfg else ""
+        roll_rules = (prompt_cfg.roll_rules_json if prompt_cfg else None) or roll_directive.DEFAULT_ROLL_RULES
+        roll_enforcement = bool(prompt_cfg.roll_enforcement) if prompt_cfg else False
 
         def build_chars_npcs():
             db.expire_all()
@@ -372,11 +419,12 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
         chars, npcs_data = build_chars_npcs()
         system_prompt = llm_client.build_system_prompt(
             adventure.description, adventure.gm_role, chars, npcs_data, system_addendum,
+            roll_rules=roll_rules, roll_enforcement=roll_enforcement,
         )
 
         history = db.query(models.Message).filter(
             models.Message.adventure_id == adventure_id,
-            models.Message.role.in_(["user", "assistant"]),
+            models.Message.role.in_(["user", "assistant", "dice"]),
         ).order_by(models.Message.created_at).all()
 
         # Some model templates (e.g. Qwen3) require at least one user message.
@@ -388,30 +436,53 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
         if history and history[0].role == "assistant":
             messages.append(OPENING_TRIGGER)
         for h in history:
-            messages.append({"role": h.role, "content": h.content})
+            # Dice results are fed back to the model as user turns so the GM can
+            # narrate consequences based on the actual outcome.
+            if h.role == "dice":
+                messages.append({"role": "user", "content": f"[Результат броска] {h.content}"})
+            else:
+                messages.append({"role": h.role, "content": h.content})
 
-        async def _stream_to_ws(msgs: list) -> str:
+        async def _stream_to_ws(msgs: list):
+            """Stream the GM turn to the client, withholding any roll directive.
+            Returns (cleaned_narration, roll_spec_or_None)."""
             show_thinking = llm_client.get_config().get("show_thinking", False)
             think_buf = ""
-            full_text = ""
+            filt = roll_directive.DirectiveStreamFilter()
             async for kind, text in llm_client.stream_response(msgs):
                 if kind == "think":
                     think_buf += text
                 else:
-                    full_text += text
-                    await websocket.send_json({"type": "chunk", "content": text})
+                    for visible in filt.feed(text):
+                        await websocket.send_json({"type": "chunk", "content": visible})
+            spec, cleaned, tail = filt.result()
+            if tail:
+                await websocket.send_json({"type": "chunk", "content": tail})
             if think_buf and show_thinking:
                 await websocket.send_json({"type": "think_done", "content": think_buf})
             await websocket.send_json({"type": "done"})
-            return full_text
+            return cleaned, spec
+
+        async def generate_turn(msgs: list):
+            """Run one GM turn: stream it, persist it, and — if the GM requested a
+            roll and enforcement is on — block the session awaiting the result."""
+            await websocket.send_json({"type": "thinking"})
+            cleaned, spec = await _stream_to_ws(msgs)
+            db.add(models.Message(adventure_id=adventure_id, role="assistant", content=cleaned))
+            pending = spec if (spec and roll_enforcement) else None
+            adventure.pending_roll = pending
+            db.commit()
+            msgs.append({"role": "assistant", "content": cleaned})
+            if pending:
+                await websocket.send_json({"type": "roll_required", "spec": pending})
+            return pending
 
         if not history:
             messages.append(OPENING_TRIGGER)
-            await websocket.send_json({"type": "thinking"})
-            full_response = await _stream_to_ws(messages)
-            db.add(models.Message(adventure_id=adventure_id, role="assistant", content=full_response))
-            db.commit()
-            messages.append({"role": "assistant", "content": full_response})
+            await generate_turn(messages)
+        elif adventure.pending_roll:
+            # Reconnected mid-roll — re-prompt the player for the pending roll.
+            await websocket.send_json({"type": "roll_required", "spec": adventure.pending_roll})
 
         def get_state_context() -> str:
             db.expire_all()
@@ -435,6 +506,13 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
             msg_type = data.get("type", "message")
 
             if msg_type == "message":
+                # Gate: while a roll is pending, narration cannot continue.
+                if adventure.pending_roll:
+                    await websocket.send_json({
+                        "type": "roll_required", "spec": adventure.pending_roll, "blocked": True,
+                    })
+                    continue
+
                 player_name = data.get("player_name", "Игрок")
                 content = data.get("content", "").strip()
                 if not content:
@@ -449,12 +527,46 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
                 state = get_state_context()
                 messages.append({"role": "user", "content": f"[{player_name}]: {content}\n\n{state}"})
 
-                await websocket.send_json({"type": "thinking"})
-                full_response = await _stream_to_ws(messages)
+                await generate_turn(messages)
 
-                db.add(models.Message(adventure_id=adventure_id, role="assistant", content=full_response))
+            elif msg_type == "roll_result":
+                if not adventure.pending_roll:
+                    continue
+
+                actor_type = data.get("actor_type", "char")
+                actor_id = data.get("actor_id")
+                roll_type = data.get("roll_type", "save_dex")
+                dc = data.get("dc")
+                manual_die = data.get("manual_die")
+                manual_total = data.get("manual_total")
+
+                try:
+                    if actor_type == "npc":
+                        actor = db.get(models.Npc, actor_id)
+                        if not actor or actor.adventure_id != adventure_id:
+                            raise ValueError("NPC не найден")
+                        text, roll_data = _resolve_npc_roll(
+                            actor, roll_type, dc, None, manual_die, manual_total)
+                    else:
+                        actor = db.get(models.Character, actor_id)
+                        if not actor or actor.adventure_id != adventure_id:
+                            raise ValueError("Персонаж не найден")
+                        text, roll_data = _resolve_char_roll(
+                            actor, roll_type, dc, None, manual_die, manual_total)
+                except Exception as e:
+                    await websocket.send_json({"type": "error", "message": f"Ошибка броска: {e}"})
+                    continue
+
+                db.add(models.Message(
+                    adventure_id=adventure_id, role="dice",
+                    content=text, player_name=actor.name, metadata_=roll_data,
+                ))
+                adventure.pending_roll = None
                 db.commit()
-                messages.append({"role": "assistant", "content": full_response})
+
+                await websocket.send_json({"type": "dice_result", "content": text})
+                messages.append({"role": "user", "content": f"[Результат броска] {text}"})
+                await generate_turn(messages)
 
             elif msg_type == "ping":
                 await websocket.send_json({"type": "pong"})
