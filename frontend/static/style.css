@@ -215,6 +215,28 @@ html, body, #app {
   flex-direction: column;
   gap: 8px;
 }
+/* ── Docked roll prompt ── */
+.roll-bar {
+  background: var(--bg);
+  border: 1px solid var(--accent2);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.roll-bar.hidden { display: none; }
+.roll-bar-title { font-weight: 700; font-size: 14px; color: var(--accent2); }
+.roll-bar-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.roll-bar-row select { flex: 1; min-width: 120px; background: var(--surface); color: var(--text); border: 1px solid var(--surface2); border-radius: 8px; padding: 8px; }
+.roll-bar-type { font-size: 13px; color: var(--text-dim); white-space: nowrap; }
+.roll-bar-dc { font-size: 13px; color: var(--text-dim); display: flex; align-items: center; gap: 4px; }
+.roll-bar-dc input, .roll-bar-row > input[type="number"] { width: 70px; background: var(--surface); color: var(--text); border: 1px solid var(--surface2); border-radius: 8px; padding: 8px; }
+.roll-bar-row .btn-primary, .roll-bar-row .btn-secondary { padding: 8px 14px; width: auto; }
+.roll-bar-cancel { background: none; border: none; color: var(--text-dim); font-size: 13px; cursor: pointer; text-align: left; padding: 0; }
+.roll-bar-cancel:hover { color: var(--text); }
+.message-row.hidden { display: none; }
+
 .player-select-row { display: flex; gap: 8px; }
 .player-select-row select {
   flex: 1;

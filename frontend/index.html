@@ -78,6 +78,21 @@
       </header>
       <div id="chat-messages"></div>
       <div class="input-area">
+        <!-- Docked roll prompt (non-blocking: chat stays readable, party panel reachable) -->
+        <div id="roll-bar" class="roll-bar hidden">
+          <div class="roll-bar-title">🎲 <span id="roll-bar-reason">Требуется бросок</span></div>
+          <div class="roll-bar-row">
+            <select id="forced-roll-actor"></select>
+            <span class="roll-bar-type" id="forced-roll-type"></span>
+          </div>
+          <div class="roll-bar-row">
+            <span class="roll-bar-dc" id="forced-roll-dc-row">DC <input id="forced-roll-dc" type="number" min="1" max="30" /></span>
+            <input id="forced-roll-value" type="number" min="1" max="100" placeholder="кубик" />
+            <button class="btn-primary" id="btn-forced-roll-submit">Бросить</button>
+            <button class="btn-secondary" id="btn-forced-roll-auto">🎲 Авто</button>
+          </div>
+          <button class="roll-bar-cancel" id="btn-forced-roll-cancel">← Другое действие (отменить бросок)</button>
+        </div>
         <div class="player-select-row">
           <select id="player-select"></select>
           <button class="dice-btn" id="btn-dice-menu">🎲</button>
@@ -185,35 +200,6 @@
 
         <button class="btn-primary full" id="btn-save-prompts">Сохранить</button>
         <button class="btn-secondary full" id="btn-reset-prompts">Сбросить</button>
-      </div>
-    </div>
-
-    <!-- VIEW: Forced Roll (overlay, mandatory — no close button) -->
-    <div id="view-forced-roll" class="overlay hidden">
-      <div class="overlay-panel">
-        <div class="overlay-header">
-          <h2>🎲 Требуется бросок</h2>
-        </div>
-        <div id="forced-roll-reason" class="prompt-hint"></div>
-        <div class="form-group">
-          <label>Кто бросает</label>
-          <select id="forced-roll-actor"></select>
-        </div>
-        <div class="form-group">
-          <label>Тип броска</label>
-          <div id="forced-roll-type" class="field-hint"></div>
-        </div>
-        <div class="form-group" id="forced-roll-dc-row">
-          <label>Сложность (DC / КД цели)</label>
-          <input id="forced-roll-dc" type="number" min="1" max="30" />
-        </div>
-        <div class="form-group">
-          <label id="forced-roll-value-label">Значение на кубике (d20)</label>
-          <div class="field-hint">Введите число, выпавшее на физическом кубике, и нажмите «Отправить». Либо бросьте автоматически.</div>
-          <input id="forced-roll-value" type="number" min="1" max="100" placeholder="напр. 14" />
-        </div>
-        <button class="btn-primary full" id="btn-forced-roll-submit">Отправить значение</button>
-        <button class="btn-secondary full" id="btn-forced-roll-auto">🎲 Бросить автоматически</button>
       </div>
     </div>
 

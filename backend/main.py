@@ -585,6 +585,13 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
                 messages.append({"role": "user", "content": f"[Результат броска] {text}"})
                 await generate_turn(messages)
 
+            elif msg_type == "cancel_roll":
+                # Player chose a different action instead of rolling — lift the gate.
+                if adventure.pending_roll:
+                    adventure.pending_roll = None
+                    db.commit()
+                await websocket.send_json({"type": "roll_cancelled"})
+
             elif msg_type == "ping":
                 await websocket.send_json({"type": "pong"})
 
