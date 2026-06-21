@@ -378,13 +378,32 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
         for h in history:
             messages.append({"role": h.role, "content": h.content})
 
+        async def _stream_to_ws(msgs: list) -> str:
+            show_thinking = llm_client.get_config().get("show_thinking", False)
+            filt = llm_client.ThinkFilter()
+            think_buf = ""
+            full_text = ""
+            async for raw_chunk in llm_client.stream_response(msgs):
+                for kind, text in filt.feed(raw_chunk):
+                    if kind == "think":
+                        think_buf += text
+                    else:
+                        full_text += text
+                        await websocket.send_json({"type": "chunk", "content": text})
+            for kind, text in filt.flush():
+                if kind == "think":
+                    think_buf += text
+                else:
+                    full_text += text
+                    await websocket.send_json({"type": "chunk", "content": text})
+            await websocket.send_json({"type": "done"})
+            if think_buf and show_thinking:
+                await websocket.send_json({"type": "think_done", "content": think_buf})
+            return full_text
+
         if not history:
             await websocket.send_json({"type": "thinking"})
-            full_response = ""
-            async for chunk in llm_client.stream_response(messages):
-                full_response += chunk
-                await websocket.send_json({"type": "chunk", "content": chunk})
-            await websocket.send_json({"type": "done"})
+            full_response = await _stream_to_ws(messages)
             db.add(models.Message(adventure_id=adventure_id, role="assistant", content=full_response))
             db.commit()
             messages.append({"role": "assistant", "content": full_response})
@@ -426,11 +445,7 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
                 messages.append({"role": "user", "content": f"[{player_name}]: {content}\n\n{state}"})
 
                 await websocket.send_json({"type": "thinking"})
-                full_response = ""
-                async for chunk in llm_client.stream_response(messages):
-                    full_response += chunk
-                    await websocket.send_json({"type": "chunk", "content": chunk})
-                await websocket.send_json({"type": "done"})
+                full_response = await _stream_to_ws(messages)
 
                 db.add(models.Message(adventure_id=adventure_id, role="assistant", content=full_response))
                 db.commit()

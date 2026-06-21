@@ -14,6 +14,7 @@ _config = {
     "model": LLM_MODEL,
     "temperature": LLM_TEMPERATURE,
     "max_tokens": LLM_MAX_TOKENS,
+    "show_thinking": False,
 }
 
 
@@ -111,6 +112,63 @@ def build_system_prompt(
 - Язык ответа: всегда тот же, на котором пишут игроки.
 
 Начни с атмосферного вступления в мир приключения — погрузи игроков в него с первых строк."""
+
+
+class ThinkFilter:
+    """
+    Strips or captures <think>...</think> blocks from a streaming response.
+
+    Qwen3 (and similar models) emit thinking at the very beginning of the
+    stream, before the actual answer. The filter buffers chunks until the
+    closing tag is found, then switches to pass-through mode.
+
+    Usage: call feed(chunk) for each chunk. It yields (kind, text) pairs
+    where kind is "think" (thinking content) or "text" (regular content).
+    """
+
+    _OPEN = "<think>"
+    _CLOSE = "</think>"
+
+    def __init__(self):
+        self._buf = ""
+        self._state = "detect"   # detect | in_think | passthrough
+
+    def feed(self, chunk: str):
+        if self._state == "passthrough":
+            yield ("text", chunk)
+            return
+
+        self._buf += chunk
+
+        if self._state == "detect":
+            stripped = self._buf.lstrip()
+            if stripped.startswith(self._OPEN):
+                self._state = "in_think"
+            elif len(self._buf) > len(self._OPEN) + 4:
+                # No <think> at start — treat entire buffer as regular text
+                self._state = "passthrough"
+                buf, self._buf = self._buf, ""
+                yield ("text", buf)
+                return
+
+        if self._state == "in_think":
+            close_idx = self._buf.find(self._CLOSE)
+            if close_idx >= 0:
+                open_idx = self._buf.find(self._OPEN) + len(self._OPEN)
+                think_text = self._buf[open_idx:close_idx]
+                after = self._buf[close_idx + len(self._CLOSE):]
+                self._buf = ""
+                self._state = "passthrough"
+                if think_text:
+                    yield ("think", think_text)
+                if after:
+                    yield ("text", after)
+
+    def flush(self):
+        """Call after stream ends to emit any buffered remainder."""
+        if self._buf and self._state != "in_think":
+            yield ("text", self._buf)
+        self._buf = ""
 
 
 async def stream_response(messages: list[dict]) -> AsyncGenerator[str, None]:

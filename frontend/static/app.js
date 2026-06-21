@@ -360,6 +360,8 @@ function handleWSMessage(data) {
     isThinking = false;
     setInputEnabled(true);
     scrollChat();
+  } else if (data.type === 'think_done') {
+    appendThinkBlock(data.content);
   } else if (data.type === 'error') {
     if (thinkingMsgEl) { thinkingMsgEl.remove(); thinkingMsgEl = null; }
     isThinking = false;
@@ -391,6 +393,25 @@ function appendMessage(role, content, playerName, scroll) {
 function scrollChat() {
   const c = document.getElementById('chat-messages');
   c.scrollTop = c.scrollHeight;
+}
+
+function appendThinkBlock(content) {
+  const container = document.getElementById('chat-messages');
+  const block = document.createElement('div');
+  block.className = 'think-block';
+  block.innerHTML = `
+    <div class="think-block-header">
+      <span class="think-toggle">▶</span>
+      <span>🧠 Размышление ГМа</span>
+    </div>
+    <div class="think-block-body">${esc(content)}</div>
+  `;
+  block.querySelector('.think-block-header').addEventListener('click', () => {
+    block.classList.toggle('open');
+    scrollChat();
+  });
+  container.appendChild(block);
+  scrollChat();
 }
 
 function setInputEnabled(enabled) {
@@ -588,6 +609,7 @@ async function loadLLMSettings() {
     document.getElementById('llm-model').value = cfg.model;
     document.getElementById('llm-temp').value = cfg.temperature;
     document.getElementById('llm-tokens').value = cfg.max_tokens;
+    document.getElementById('llm-show-thinking').checked = cfg.show_thinking || false;
   } catch {}
 }
 
@@ -735,6 +757,7 @@ document.addEventListener('DOMContentLoaded', () => {
       model: document.getElementById('llm-model').value.trim(),
       temperature: parseFloat(document.getElementById('llm-temp').value),
       max_tokens: parseInt(document.getElementById('llm-tokens').value),
+      show_thinking: document.getElementById('llm-show-thinking').checked,
     });
     hideOverlay('settings');
   });

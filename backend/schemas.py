@@ -125,6 +125,7 @@ class LLMConfigUpdate(BaseModel):
     model: str
     temperature: float = 0.8
     max_tokens: int = 1024
+    show_thinking: bool = False
 
 
 class TemplateOut(BaseModel):

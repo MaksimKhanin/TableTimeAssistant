@@ -365,9 +365,12 @@ html, body, #app {
   display: flex;
   gap: 10px;
   overflow-x: auto;
-  padding-bottom: 6px;
+  overflow-y: hidden;
+  padding-bottom: 8px;
+  min-height: 96px;
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
+  align-items: flex-start;
 }
 #template-carousel::-webkit-scrollbar { height: 3px; }
 #template-carousel::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 2px; }
@@ -488,3 +491,56 @@ html, body, #app {
 .md-italic { font-style: italic; color: #c0c8e8; }
 .md-h2 { font-size: 16px; font-weight: 700; color: var(--accent2); margin: 4px 0 2px; }
 .md-h3 { font-size: 15px; font-weight: 700; color: var(--accent2); }
+
+/* ── Think block (collapsible) ── */
+.think-block {
+  align-self: flex-start;
+  max-width: 92%;
+  background: var(--surface);
+  border: 1px dashed var(--surface2);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.think-block-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-dim);
+  user-select: none;
+}
+.think-block-header:hover { color: var(--text); }
+.think-toggle { font-size: 10px; transition: transform 0.2s; display: inline-block; }
+.think-block.open .think-toggle { transform: rotate(90deg); }
+.think-block-body {
+  display: none;
+  padding: 8px 12px 10px;
+  font-size: 13px;
+  color: var(--text-dim);
+  font-style: italic;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-top: 1px solid var(--surface2);
+  line-height: 1.5;
+}
+.think-block.open .think-block-body { display: block; }
+
+/* ── Checkbox in settings ── */
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text);
+  padding: 2px 0;
+}
+.checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
