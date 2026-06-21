@@ -124,8 +124,9 @@ class LLMConfigUpdate(BaseModel):
     base_url: str
     model: str
     temperature: float = 0.8
-    max_tokens: int = 1024
+    max_tokens: int = 2048
     show_thinking: bool = False
+    use_tools: bool = False
 
 
 class TemplateOut(BaseModel):

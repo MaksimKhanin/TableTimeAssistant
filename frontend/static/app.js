@@ -785,6 +785,7 @@ async function loadLLMSettings() {
     document.getElementById('llm-temp').value = cfg.temperature;
     document.getElementById('llm-tokens').value = cfg.max_tokens;
     document.getElementById('llm-show-thinking').checked = cfg.show_thinking || false;
+    document.getElementById('llm-use-tools').checked = cfg.use_tools || false;
   } catch {}
   await populateModelsList();
 }
@@ -958,6 +959,7 @@ document.addEventListener('DOMContentLoaded', () => {
       temperature: parseFloat(document.getElementById('llm-temp').value),
       max_tokens: parseInt(document.getElementById('llm-tokens').value),
       show_thinking: document.getElementById('llm-show-thinking').checked,
+      use_tools: document.getElementById('llm-use-tools').checked,
     });
     hideOverlay('settings');
   });

@@ -81,24 +81,83 @@ def _enabled_categories(rules: list[dict]) -> list[dict]:
     return [r for r in (rules or DEFAULT_ROLL_RULES) if r.get("enabled", True)]
 
 
-def build_roll_instructions(rules: Optional[list[dict]]) -> str:
-    """Render the system-prompt section that teaches the model the directive."""
-    active = _enabled_categories(rules)
-    if not active:
-        return ""
-
-    type_lines = []
+def _type_lines(active: list[dict]) -> str:
+    lines = []
     for r in active:
-        cat = r.get("category")
-        types = _CATEGORY_TYPES.get(cat, [])
+        types = _CATEGORY_TYPES.get(r.get("category"), [])
         if not types:
             continue
         tokens = " / ".join(types)
         dc = r.get("default_dc")
         dc_hint = f" (если не уверен в сложности — DC {dc})" if dc else ""
-        type_lines.append(f"- **{tokens}** — {r.get('name')}: {r.get('when')}{dc_hint}")
+        lines.append(f"- **{tokens}** — {r.get('name')}: {r.get('when')}{dc_hint}")
+    return "\n".join(lines)
 
-    types_block = "\n".join(type_lines)
+
+def build_roll_tools(rules: Optional[list[dict]] = None) -> list[dict]:
+    """OpenAI-style function schema for native tool-calling (Ollama `tools`)."""
+    active = _enabled_categories(rules)
+    types = []
+    for r in active:
+        types.extend(_CATEGORY_TYPES.get(r.get("category"), []))
+    if not types:
+        return []
+    return [{
+        "type": "function",
+        "function": {
+            "name": "request_roll",
+            "description": (
+                "Запросить у игрока бросок кубика, когда исход не предрешён "
+                "(спасбросок, атака, проверка навыка, инициатива). Сначала опиши "
+                "ситуацию в обычном тексте, затем вызови эту функцию и остановись — "
+                "НЕ описывай результат сам, его пришлёт система."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "actor": {"type": "string", "description": "Имя того, кто бросает"},
+                    "type": {"type": "string", "enum": types, "description": "Тип броска"},
+                    "dc": {"type": "integer", "description": "Сложность (DC) или КД цели; можно опустить"},
+                    "reason": {"type": "string", "description": "Кратко, зачем нужен бросок"},
+                },
+                "required": ["actor", "type"],
+            },
+        },
+    }]
+
+
+def spec_from_tool_args(args: dict) -> dict:
+    """Normalize request_roll tool arguments into a roll spec."""
+    return {
+        "actor": str(args.get("actor", "")).strip(),
+        "type": _normalize_type(str(args.get("type", ""))),
+        "dc": _to_int(args.get("dc")),
+        "reason": str(args.get("reason", "")).strip(),
+    }
+
+
+def build_roll_instructions(rules: Optional[list[dict]], use_tools: bool = False) -> str:
+    """Render the system-prompt section that teaches the model how to ask for rolls."""
+    active = _enabled_categories(rules)
+    if not active:
+        return ""
+
+    types_block = _type_lines(active)
+
+    if use_tools:
+        return f"""
+
+## Механика бросков — функция request_roll
+Ты НИКОГДА не решаешь сам, удался ли бросок, и НИКОГДА не выдумываешь, что выпало.
+Когда наступает момент, требующий броска:
+1. Опиши обстановку и напряжение ДО броска (обычным текстом), но НЕ исход.
+2. Вызови функцию **request_roll** с нужными параметрами и остановись.
+3. НЕ продолжай сцену и НЕ бросай за игрока — жди результат от системы.
+
+Когда какой тип запрашивать:
+{types_block}
+
+После строки «[Результат броска] …» продолжи повествование, опираясь ИМЕННО на этот исход."""
 
     return f"""
 

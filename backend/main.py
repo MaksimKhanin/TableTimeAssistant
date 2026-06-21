@@ -395,6 +395,8 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
         turn_reminder = prompt_cfg.turn_reminder if prompt_cfg else ""
         roll_rules = (prompt_cfg.roll_rules_json if prompt_cfg else None) or roll_directive.DEFAULT_ROLL_RULES
         roll_enforcement = bool(prompt_cfg.roll_enforcement) if prompt_cfg else False
+        use_tools = bool(llm_client.get_config().get("use_tools", False))
+        roll_tools = roll_directive.build_roll_tools(roll_rules) if (roll_enforcement and use_tools) else None
 
         def build_chars_npcs():
             db.expire_all()
@@ -419,7 +421,7 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
         chars, npcs_data = build_chars_npcs()
         system_prompt = llm_client.build_system_prompt(
             adventure.description, adventure.gm_role, chars, npcs_data, system_addendum,
-            roll_rules=roll_rules, roll_enforcement=roll_enforcement,
+            roll_rules=roll_rules, roll_enforcement=roll_enforcement, use_tools=use_tools,
         )
 
         history = db.query(models.Message).filter(
@@ -448,16 +450,25 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
             Returns (cleaned_narration, roll_spec_or_None)."""
             show_thinking = llm_client.get_config().get("show_thinking", False)
             think_buf = ""
+            tool_spec = None
             filt = roll_directive.DirectiveStreamFilter()
-            async for kind, text in llm_client.stream_response(msgs):
+            async for kind, text in llm_client.stream_response(msgs, tools=roll_tools):
                 if kind == "think":
                     think_buf += text
+                elif kind == "roll_tool":
+                    try:
+                        tool_spec = roll_directive.spec_from_tool_args(json.loads(text))
+                    except Exception:
+                        tool_spec = None
                 else:
                     for visible in filt.feed(text):
                         await websocket.send_json({"type": "chunk", "content": visible})
             spec, cleaned, tail = filt.result()
             if tail:
                 await websocket.send_json({"type": "chunk", "content": tail})
+            # A native tool call takes priority over an inline directive.
+            if tool_spec is not None:
+                spec = tool_spec
             if think_buf and show_thinking:
                 await websocket.send_json({"type": "think_done", "content": think_buf})
             await websocket.send_json({"type": "done"})

@@ -135,6 +135,13 @@
             Показывать размышления модели (Qwen3 и др.)
           </label>
         </div>
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="llm-use-tools" />
+            Использовать tool-calling для бросков (Qwen3, Llama 3.1, Mistral…)
+          </label>
+          <div class="field-hint">Модель запрашивает броски нативным вызовом функции. Если модель не поддерживает — оставьте выкл; сработает текстовая директива.</div>
+        </div>
         <div id="llm-status" class="status-badge"></div>
         <button class="btn-primary full" id="btn-save-llm">Сохранить</button>
         <button class="btn-secondary full" id="btn-check-llm">Проверить соединение</button>

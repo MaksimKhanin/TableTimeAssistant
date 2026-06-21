@@ -18,6 +18,7 @@ _config = {
     "temperature": LLM_TEMPERATURE,
     "max_tokens": LLM_MAX_TOKENS,
     "show_thinking": False,
+    "use_tools": False,   # native function-calling for roll requests (model must support it)
 }
 
 
@@ -58,6 +59,7 @@ def build_system_prompt(
     system_addendum: str = "",
     roll_rules: list[dict] | None = None,
     roll_enforcement: bool = False,
+    use_tools: bool = False,
 ) -> str:
     char_lines = []
     for c in characters:
@@ -96,7 +98,7 @@ def build_system_prompt(
 
     global_extra = f"\n\n## Дополнительные инструкции\n{system_addendum.strip()}" if system_addendum and system_addendum.strip() else ""
 
-    roll_block = roll_directive.build_roll_instructions(roll_rules) if roll_enforcement else ""
+    roll_block = roll_directive.build_roll_instructions(roll_rules, use_tools=use_tools) if roll_enforcement else ""
 
     return f"""Ты — {gm_role}, ведущий интерактивной ролевой игры в стиле Dungeons & Dragons.
 Ты НИКОГДА не выходишь из образа и не ссылаешься на то, что ты — языковая модель.{global_extra}
@@ -206,8 +208,12 @@ class ThinkFilter:
         self._buf = ""
 
 
-async def stream_response(messages: list[dict]) -> AsyncGenerator[tuple[str, str], None]:
-    """Yields (kind, text) tuples where kind is 'text' or 'think'.
+async def stream_response(messages: list[dict], tools: list | None = None) -> AsyncGenerator[tuple[str, str], None]:
+    """Yields (kind, text) tuples where kind is 'text', 'think' or 'roll_tool'.
+
+    When `tools` is provided, native function-calling is enabled; a
+    request_roll tool call is surfaced as ('roll_tool', json_args).
+
 
     Two robustness behaviours:
       * Auto-continuation — if Ollama stops because it hit the token budget
@@ -237,10 +243,14 @@ async def stream_response(messages: list[dict]) -> AsyncGenerator[tuple[str, str
                 "num_predict": cfg["max_tokens"],
             },
         }
+        # Offer tools only on the first round (a continuation is just resuming text).
+        if tools and attempt == 0:
+            payload["tools"] = tools
 
         finish_reason = "stop"
         had_thinking = False
         round_text = ""
+        tool_calls_collected = []
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             async with client.stream("POST", url, json=payload) as response:
@@ -262,6 +272,10 @@ async def stream_response(messages: list[dict]) -> AsyncGenerator[tuple[str, str
                     except json.JSONDecodeError:
                         continue
                     msg = data.get("message", {})
+
+                    tcs = msg.get("tool_calls")
+                    if tcs:
+                        tool_calls_collected.extend(tcs)
 
                     # Ollama native thinking field (Ollama ≥0.9 with think:true)
                     thinking = msg.get("thinking") or ""
@@ -295,6 +309,23 @@ async def stream_response(messages: list[dict]) -> AsyncGenerator[tuple[str, str
                                     had_thinking = True
                                 yield (kind, text)
                         break
+
+        # Native function call wins — emit it and stop (no continuation needed).
+        emitted_tool = False
+        for tc in tool_calls_collected:
+            fn = tc.get("function", {}) if isinstance(tc, dict) else {}
+            if fn.get("name") == "request_roll":
+                args = fn.get("arguments") or {}
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except json.JSONDecodeError:
+                        args = {}
+                yield ("roll_tool", json.dumps(args))
+                emitted_tool = True
+                break
+        if emitted_tool:
+            break
 
         truncated = finish_reason == "length"
         think_only = had_thinking and not round_text.strip()
