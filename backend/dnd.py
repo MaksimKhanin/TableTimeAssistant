@@ -14,18 +14,44 @@ def modifier_from_stat(stat: int) -> int:
     return (stat - 10) // 2
 
 
-def roll_initiative(dex: int) -> int:
-    return roll_total(20, modifier=modifier_from_stat(dex))
+def _d20(die: Optional[int] = None) -> int:
+    """Return a d20 face — either the value the player physically rolled
+    (hybrid mode) or a fresh random roll. Clamped to 1..20."""
+    if die is not None:
+        return max(1, min(20, int(die)))
+    return roll(20)[0]
 
 
-def roll_attack(attack_bonus: int = 0) -> dict:
-    d = roll(20)[0]
+def roll_initiative(dex: int, die: Optional[int] = None) -> dict:
+    d = _d20(die)
+    mod = modifier_from_stat(dex)
+    return {"die": d, "bonus": mod, "total": d + mod}
+
+
+def roll_attack(attack_bonus: int = 0, die: Optional[int] = None) -> dict:
+    d = _d20(die)
     total = d + attack_bonus
     return {"die": d, "bonus": attack_bonus, "total": total, "critical": d == 20, "fumble": d == 1}
 
 
-def roll_damage(dice_notation: str, modifier: int = 0) -> dict:
-    """Parse notation like '1d6', '2d8', '1d4+2'"""
+def roll_ability_check(stat: int, dc: Optional[int] = None, die: Optional[int] = None) -> dict:
+    mod = modifier_from_stat(stat)
+    d = _d20(die)
+    total = d + mod
+    out = {"die": d, "modifier": mod, "total": total, "critical": d == 20, "fumble": d == 1}
+    if dc is not None:
+        out["dc"] = dc
+        out["success"] = total >= dc
+    return out
+
+
+def roll_damage(dice_notation: str, modifier: int = 0, manual_total: Optional[int] = None) -> dict:
+    """Parse notation like '1d6', '2d8', '1d4+2'. If manual_total is given
+    (hybrid mode — player rolled physical dice), use it verbatim."""
+    if manual_total is not None:
+        t = max(0, int(manual_total))
+        return {"rolls": [t], "extra": 0, "modifier": 0, "total": t, "manual": True}
+
     notation = dice_notation.strip()
     extra = 0
     if "+" in notation:
@@ -49,9 +75,9 @@ def roll_damage(dice_notation: str, modifier: int = 0) -> dict:
     return {"rolls": rolls, "extra": extra, "modifier": modifier, "total": max(0, total)}
 
 
-def roll_saving_throw(stat: int, dc: int) -> dict:
+def roll_saving_throw(stat: int, dc: int, die: Optional[int] = None) -> dict:
     mod = modifier_from_stat(stat)
-    d = roll(20)[0]
+    d = _d20(die)
     total = d + mod
     return {"die": d, "modifier": mod, "total": total, "dc": dc, "success": total >= dc}
 

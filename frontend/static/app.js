@@ -5,6 +5,27 @@ let currentAdventureId = null;
 let ws = null;
 let isThinking = false;
 let thinkingMsgEl = null;
+let pendingRollSpec = null;   // set while the GM is blocking on a required roll
+
+// ── Roll type metadata ────────────────────────────────────────────────────────
+const ROLL_TYPE_LABELS = {
+  attack: 'Бросок атаки', initiative: 'Инициатива', damage: 'Урон',
+  save_str: 'Спасбросок СИЛ', save_dex: 'Спасбросок ЛОВ', save_con: 'Спасбросок ТЕЛ',
+  save_int: 'Спасбросок ИНТ', save_wis: 'Спасбросок МДР', save_cha: 'Спасбросок ХАР',
+  check_str: 'Проверка СИЛ', check_dex: 'Проверка ЛОВ', check_con: 'Проверка ТЕЛ',
+  check_int: 'Проверка ИНТ', check_wis: 'Проверка МДР', check_cha: 'Проверка ХАР',
+};
+function rollTypeLabel(t) { return ROLL_TYPE_LABELS[t] || t; }
+function isD20Type(t) {
+  return t === 'attack' || t === 'initiative' || t.startsWith('save_') || t.startsWith('check_');
+}
+
+const ROLL_CATEGORIES = [
+  { value: 'save', label: 'Спасброски' },
+  { value: 'attack', label: 'Атаки' },
+  { value: 'check', label: 'Проверки навыков' },
+  { value: 'initiative', label: 'Инициатива' },
+];
 
 // ── View Navigation ──────────────────────────────────────────────────────────
 function showView(name) {
@@ -364,12 +385,20 @@ function handleWSMessage(data) {
     }
     thinkingMsgEl = null;
     isThinking = false;
-    setInputEnabled(true);
+    setInputEnabled(!pendingRollSpec);
     scrollChat();
+  } else if (data.type === 'roll_required') {
+    // GM is blocking until the player submits a dice roll.
+    pendingRollSpec = data.spec;
+    isThinking = false;
+    setInputEnabled(false);
+    showForcedRoll(data.spec, !!data.blocked);
+  } else if (data.type === 'dice_result') {
+    appendMessage('dice', data.content, null, true);
   } else if (data.type === 'error') {
     if (thinkingMsgEl) { thinkingMsgEl.remove(); thinkingMsgEl = null; }
     isThinking = false;
-    setInputEnabled(true);
+    setInputEnabled(!pendingRollSpec);
     appendMessage('dice', `⚠️ Ошибка: ${data.message}`, null, true);
   }
 }
@@ -430,6 +459,7 @@ function setInputEnabled(enabled) {
 
 function sendMessage() {
   if (isThinking) return;
+  if (pendingRollSpec) { showForcedRoll(pendingRollSpec, true); return; }
   const content = document.getElementById('chat-input').value.trim();
   if (!content) return;
   const playerName = document.getElementById('player-select').value;
@@ -601,13 +631,149 @@ async function loadDicePanel() {
   ]));
 }
 
+// ── Forced roll (mandatory dice gate) ─────────────────────────────────────────
+async function showForcedRoll(spec, blocked) {
+  document.getElementById('forced-roll-reason').textContent = spec.reason
+    ? `Мастер требует бросок: ${spec.reason}`
+    : 'Мастер требует бросок, чтобы продолжить повествование.';
+  document.getElementById('forced-roll-type').textContent = rollTypeLabel(spec.type);
+
+  // Populate "who rolls" and preselect the actor named in the directive.
+  const actorSel = document.getElementById('forced-roll-actor');
+  actorSel.innerHTML = '';
+  try {
+    const adv = await api('GET', `/adventures/${currentAdventureId}`);
+    adv.characters.forEach(c => {
+      const o = document.createElement('option');
+      o.value = `char:${c.id}`;
+      o.textContent = `${c.name} (${c.char_class})`;
+      actorSel.appendChild(o);
+    });
+    (adv.npcs || []).forEach(n => {
+      const o = document.createElement('option');
+      o.value = `npc:${n.id}`;
+      o.textContent = `${n.name} (${n.is_enemy ? '⚔ враг' : '🤝 союзник'})`;
+      actorSel.appendChild(o);
+    });
+    if (spec.actor) {
+      const want = spec.actor.trim().toLowerCase();
+      const match = Array.from(actorSel.options).find(o => o.textContent.toLowerCase().startsWith(want));
+      if (match) actorSel.value = match.value;
+    }
+  } catch {}
+
+  // DC row — hidden for initiative (no target number).
+  const dcRow = document.getElementById('forced-roll-dc-row');
+  if (spec.type === 'initiative') {
+    dcRow.classList.add('hidden');
+  } else {
+    dcRow.classList.remove('hidden');
+    document.getElementById('forced-roll-dc').value =
+      spec.dc != null ? spec.dc : (spec.type === 'attack' ? 12 : 13);
+  }
+
+  // Hybrid: d20 face for d20-based rolls, raw sum for damage / generic dice.
+  document.getElementById('forced-roll-value-label').textContent =
+    isD20Type(spec.type) ? 'Значение на кубике (d20)' : 'Сумма броска';
+  document.getElementById('forced-roll-value').value = '';
+
+  showOverlay('forced-roll');
+}
+
+function submitForcedRoll(auto) {
+  if (!pendingRollSpec) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN) { alert('Нет соединения с сервером'); return; }
+
+  const spec = pendingRollSpec;
+  const [actorType, actorId] = document.getElementById('forced-roll-actor').value.split(':');
+  const dcRow = document.getElementById('forced-roll-dc-row');
+  const dc = dcRow.classList.contains('hidden')
+    ? null
+    : (parseInt(document.getElementById('forced-roll-dc').value) || null);
+
+  const payload = {
+    type: 'roll_result',
+    actor_type: actorType === 'npc' ? 'npc' : 'char',
+    actor_id: parseInt(actorId),
+    roll_type: spec.type,
+    dc,
+  };
+
+  if (!auto) {
+    const v = parseInt(document.getElementById('forced-roll-value').value);
+    if (Number.isNaN(v)) {
+      alert('Введите значение кубика или нажмите «Бросить автоматически».');
+      return;
+    }
+    if (isD20Type(spec.type)) payload.manual_die = v;
+    else payload.manual_total = v;
+  }
+
+  ws.send(JSON.stringify(payload));
+  pendingRollSpec = null;
+  hideOverlay('forced-roll');
+  isThinking = true;
+  setInputEnabled(false);
+}
+
 // ── Prompt Config ─────────────────────────────────────────────────────────────
 async function loadPromptConfig() {
   try {
     const cfg = await api('GET', '/prompt-config');
     document.getElementById('prompt-system').value = cfg.system_addendum || '';
     document.getElementById('prompt-reminder').value = cfg.turn_reminder || '';
+    document.getElementById('prompt-roll-enforcement').checked = cfg.roll_enforcement !== false;
+    renderRollRules(cfg.roll_rules || []);
   } catch {}
+}
+
+function renderRollRules(rules) {
+  const list = document.getElementById('roll-rules-list');
+  list.innerHTML = '';
+  rules.forEach(r => addRollRuleRow(r));
+}
+
+function addRollRuleRow(rule) {
+  const r = rule || { category: 'check', name: '', when: '', die: 'd20', default_dc: 13, enabled: true };
+  const list = document.getElementById('roll-rules-list');
+  const card = document.createElement('div');
+  card.className = 'roll-rule-card';
+  const catOptions = ROLL_CATEGORIES.map(c =>
+    `<option value="${c.value}" ${c.value === r.category ? 'selected' : ''}>${esc(c.label)}</option>`).join('');
+  card.innerHTML = `
+    <div class="roll-rule-head">
+      <label class="checkbox-label">
+        <input type="checkbox" class="rr-enabled" ${r.enabled !== false ? 'checked' : ''} /> Активно
+      </label>
+      <button class="remove-btn rr-remove" title="Удалить">✕</button>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-field"><label>Название</label><input class="rr-name" type="text" value="${esc(r.name || '')}" /></div>
+      <div class="stat-field"><label>Категория</label><select class="rr-category">${catOptions}</select></div>
+      <div class="stat-field"><label>Кость</label><input class="rr-die" type="text" value="${esc(r.die || 'd20')}" /></div>
+      <div class="stat-field"><label>DC по умолч.</label><input class="rr-dc" type="number" value="${r.default_dc != null ? r.default_dc : ''}" /></div>
+    </div>
+    <div class="form-group">
+      <label>Когда срабатывает (подсказка для ГМа)</label>
+      <textarea class="rr-when" rows="2">${esc(r.when || '')}</textarea>
+    </div>
+  `;
+  card.querySelector('.rr-remove').addEventListener('click', () => card.remove());
+  list.appendChild(card);
+}
+
+function collectRollRules() {
+  return Array.from(document.querySelectorAll('.roll-rule-card')).map(card => {
+    const dcVal = card.querySelector('.rr-dc').value;
+    return {
+      enabled: card.querySelector('.rr-enabled').checked,
+      name: card.querySelector('.rr-name').value.trim(),
+      category: card.querySelector('.rr-category').value,
+      die: card.querySelector('.rr-die').value.trim() || 'd20',
+      default_dc: dcVal === '' ? null : (parseInt(dcVal) || null),
+      when: card.querySelector('.rr-when').value.trim(),
+    };
+  });
 }
 
 // ── LLM Settings ──────────────────────────────────────────────────────────────
@@ -758,21 +924,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Prompt config
   document.getElementById('btn-close-prompts').addEventListener('click', () => hideOverlay('prompts'));
+  document.getElementById('btn-add-roll-rule').addEventListener('click', () => addRollRuleRow());
   document.getElementById('btn-save-prompts').addEventListener('click', async () => {
     await api('PUT', '/prompt-config', {
       system_addendum: document.getElementById('prompt-system').value,
       turn_reminder: document.getElementById('prompt-reminder').value,
+      roll_enforcement: document.getElementById('prompt-roll-enforcement').checked,
+      roll_rules: collectRollRules(),
     });
     hideOverlay('prompts');
-    alert('Промпты сохранены. Применятся к следующей сессии.');
+    alert('Настройки сохранены. Применятся к следующей сессии.');
   });
   document.getElementById('btn-reset-prompts').addEventListener('click', async () => {
-    if (!confirm('Сбросить промпты на пустые?')) return;
-    document.getElementById('prompt-system').value = '';
-    document.getElementById('prompt-reminder').value = '';
-    await api('PUT', '/prompt-config', { system_addendum: '', turn_reminder: '' });
+    if (!confirm('Сбросить настройки промптов и правил на значения по умолчанию?')) return;
+    await api('PUT', '/prompt-config', {
+      system_addendum: '', turn_reminder: '',
+      roll_enforcement: true, roll_rules: [],
+    });
+    await loadPromptConfig();
     hideOverlay('prompts');
   });
+
+  // Forced roll overlay
+  document.getElementById('btn-forced-roll-submit').addEventListener('click', () => submitForcedRoll(false));
+  document.getElementById('btn-forced-roll-auto').addEventListener('click', () => submitForcedRoll(true));
 
   // LLM settings
   document.getElementById('btn-close-settings').addEventListener('click', () => hideOverlay('settings'));

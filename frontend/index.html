@@ -165,8 +165,48 @@
           <textarea id="prompt-reminder" rows="4" placeholder="Не выходи из образа ни при каких обстоятельствах. Каждый ответ заканчивай открытым вопросом к игрокам..."></textarea>
         </div>
 
+        <div class="section-divider"><span>🎲 Валидация бросков</span></div>
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="prompt-roll-enforcement" />
+            Требовать бросок, когда ГМ его объявляет (блокировать повествование)
+          </label>
+          <div class="field-hint">Когда включено, мастер обязан запрашивать броски директивой, а игра останавливается и ждёт ввод значений кубиков, прежде чем продолжить.</div>
+        </div>
+        <div id="roll-rules-list"></div>
+        <button class="btn-secondary" id="btn-add-roll-rule" style="margin-bottom:12px">+ Добавить правило-триггер</button>
+
         <button class="btn-primary full" id="btn-save-prompts">Сохранить</button>
         <button class="btn-secondary full" id="btn-reset-prompts">Сбросить</button>
+      </div>
+    </div>
+
+    <!-- VIEW: Forced Roll (overlay, mandatory — no close button) -->
+    <div id="view-forced-roll" class="overlay hidden">
+      <div class="overlay-panel">
+        <div class="overlay-header">
+          <h2>🎲 Требуется бросок</h2>
+        </div>
+        <div id="forced-roll-reason" class="prompt-hint"></div>
+        <div class="form-group">
+          <label>Кто бросает</label>
+          <select id="forced-roll-actor"></select>
+        </div>
+        <div class="form-group">
+          <label>Тип броска</label>
+          <div id="forced-roll-type" class="field-hint"></div>
+        </div>
+        <div class="form-group" id="forced-roll-dc-row">
+          <label>Сложность (DC / КД цели)</label>
+          <input id="forced-roll-dc" type="number" min="1" max="30" />
+        </div>
+        <div class="form-group">
+          <label id="forced-roll-value-label">Значение на кубике (d20)</label>
+          <div class="field-hint">Введите число, выпавшее на физическом кубике, и нажмите «Отправить». Либо бросьте автоматически.</div>
+          <input id="forced-roll-value" type="number" min="1" max="100" placeholder="напр. 14" />
+        </div>
+        <button class="btn-primary full" id="btn-forced-roll-submit">Отправить значение</button>
+        <button class="btn-secondary full" id="btn-forced-roll-auto">🎲 Бросить автоматически</button>
       </div>
     </div>
 

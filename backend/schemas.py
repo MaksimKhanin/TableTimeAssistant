@@ -163,6 +163,17 @@ class PromptConfigOut(BaseModel):
         from_attributes = True
 
 
+class RollRule(BaseModel):
+    category: str = "check"          # save | attack | check | initiative
+    name: str = ""
+    when: str = ""
+    die: str = "d20"
+    default_dc: Optional[int] = None
+    enabled: bool = True
+
+
 class PromptConfigUpdate(BaseModel):
     system_addendum: str = ""
     turn_reminder: str = ""
+    roll_enforcement: bool = True
+    roll_rules: list[RollRule] = []

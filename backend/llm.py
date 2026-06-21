@@ -3,6 +3,8 @@ import json
 import os
 from typing import AsyncGenerator
 
+import roll_directive
+
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "http://localhost:11434")
 LLM_MODEL = os.environ.get("LLM_MODEL", "llama3")
 LLM_TEMPERATURE = float(os.environ.get("LLM_TEMPERATURE", "0.8"))
@@ -54,6 +56,8 @@ def build_system_prompt(
     characters: list[dict],
     npcs: list[dict] | None = None,
     system_addendum: str = "",
+    roll_rules: list[dict] | None = None,
+    roll_enforcement: bool = False,
 ) -> str:
     char_lines = []
     for c in characters:
@@ -91,6 +95,8 @@ def build_system_prompt(
         npc_section += "\n### Союзники и нейтральные NPC\n" + "\n".join(allies)
 
     global_extra = f"\n\n## Дополнительные инструкции\n{system_addendum.strip()}" if system_addendum and system_addendum.strip() else ""
+
+    roll_block = roll_directive.build_roll_instructions(roll_rules) if roll_enforcement else ""
 
     return f"""Ты — {gm_role}, ведущий интерактивной ролевой игры в стиле Dungeons & Dragons.
 Ты НИКОГДА не выходишь из образа и не ссылаешься на то, что ты — языковая модель.{global_extra}
@@ -131,7 +137,7 @@ def build_system_prompt(
 - Давай игрокам шанс на успех, но не делай мир безопасным.
 - Никогда не говори игроку, что он «не может» что-то сделать — покажи последствия.
 - Если игрок пытается что-то сложное — попроси бросок нужного навыка.
-- Язык ответа: всегда тот же, на котором пишут игроки.
+- Язык ответа: всегда тот же, на котором пишут игроки.{roll_block}
 
 Начни с атмосферного вступления в мир приключения — погрузи игроков в него с первых строк."""
 
