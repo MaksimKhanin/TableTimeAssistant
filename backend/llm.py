@@ -8,7 +8,8 @@ LLM_MODEL = os.environ.get("LLM_MODEL", "llama3")
 LLM_TEMPERATURE = float(os.environ.get("LLM_TEMPERATURE", "0.8"))
 LLM_MAX_TOKENS = int(os.environ.get("LLM_MAX_TOKENS", "1024"))
 
-# In-memory config (can be updated at runtime)
+_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "llm_config.json")
+
 _config = {
     "base_url": LLM_BASE_URL,
     "model": LLM_MODEL,
@@ -18,12 +19,33 @@ _config = {
 }
 
 
+def _load_persisted():
+    if os.path.exists(_CONFIG_PATH):
+        try:
+            with open(_CONFIG_PATH) as f:
+                _config.update(json.load(f))
+        except Exception:
+            pass
+
+
+def _save_persisted():
+    try:
+        with open(_CONFIG_PATH, "w") as f:
+            json.dump(_config, f, indent=2)
+    except Exception:
+        pass
+
+
+_load_persisted()
+
+
 def get_config() -> dict:
     return dict(_config)
 
 
 def update_config(**kwargs):
     _config.update(kwargs)
+    _save_persisted()
 
 
 def build_system_prompt(
