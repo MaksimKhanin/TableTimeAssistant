@@ -323,6 +323,9 @@ function collectNpcs() {
 // ── Game view ─────────────────────────────────────────────────────────────────
 async function openAdventure(id, title) {
   currentAdventureId = id;
+  pendingRollSpec = null;
+  hideRollBar();
+  setInputEnabled(true);
   document.getElementById('game-title').textContent = title;
   document.getElementById('chat-messages').innerHTML = '';
   showView('game');
@@ -395,6 +398,10 @@ function handleWSMessage(data) {
     showForcedRoll(data.spec, !!data.blocked);
   } else if (data.type === 'dice_result') {
     appendMessage('dice', data.content, null, true);
+  } else if (data.type === 'roll_cancelled') {
+    pendingRollSpec = null;
+    hideRollBar();
+    setInputEnabled(true);
   } else if (data.type === 'error') {
     if (thinkingMsgEl) { thinkingMsgEl.remove(); thinkingMsgEl = null; }
     isThinking = false;
@@ -673,11 +680,29 @@ async function showForcedRoll(spec, blocked) {
   }
 
   // Hybrid: d20 face for d20-based rolls, raw sum for damage / generic dice.
-  document.getElementById('forced-roll-value-label').textContent =
-    isD20Type(spec.type) ? 'Значение на кубике (d20)' : 'Сумма броска';
-  document.getElementById('forced-roll-value').value = '';
+  const valEl = document.getElementById('forced-roll-value');
+  valEl.placeholder = isD20Type(spec.type) ? 'd20' : 'сумма';
+  valEl.value = '';
 
-  showOverlay('forced-roll');
+  // Docked, non-blocking: hide the normal input row, keep chat + header usable.
+  document.getElementById('roll-bar').classList.remove('hidden');
+  document.querySelector('#view-game .message-row').classList.add('hidden');
+}
+
+function hideRollBar() {
+  document.getElementById('roll-bar').classList.add('hidden');
+  document.querySelector('#view-game .message-row').classList.remove('hidden');
+}
+
+function cancelForcedRoll() {
+  if (!pendingRollSpec) return;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'cancel_roll' }));
+  }
+  pendingRollSpec = null;
+  hideRollBar();
+  setInputEnabled(true);
+  document.getElementById('chat-input').focus();
 }
 
 function submitForcedRoll(auto) {
@@ -711,7 +736,7 @@ function submitForcedRoll(auto) {
 
   ws.send(JSON.stringify(payload));
   pendingRollSpec = null;
-  hideOverlay('forced-roll');
+  hideRollBar();
   isThinking = true;
   setInputEnabled(false);
 }
@@ -946,9 +971,13 @@ document.addEventListener('DOMContentLoaded', () => {
     hideOverlay('prompts');
   });
 
-  // Forced roll overlay
+  // Forced roll bar
   document.getElementById('btn-forced-roll-submit').addEventListener('click', () => submitForcedRoll(false));
   document.getElementById('btn-forced-roll-auto').addEventListener('click', () => submitForcedRoll(true));
+  document.getElementById('btn-forced-roll-cancel').addEventListener('click', () => cancelForcedRoll());
+  document.getElementById('forced-roll-value').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); submitForcedRoll(false); }
+  });
 
   // LLM settings
   document.getElementById('btn-close-settings').addEventListener('click', () => hideOverlay('settings'));
