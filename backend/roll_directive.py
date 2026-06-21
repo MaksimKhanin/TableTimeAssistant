@@ -136,6 +136,59 @@ def spec_from_tool_args(args: dict) -> dict:
     }
 
 
+def build_hp_tool() -> dict:
+    """OpenAI-style function schema for applying an HP change (damage or healing)."""
+    return {
+        "type": "function",
+        "function": {
+            "name": "apply_hp",
+            "description": (
+                "Изменить здоровье персонажа или существа. Вызывай ВСЕГДА, когда ХП "
+                "меняется: урон (delta отрицательный) или лечение (delta положительный). "
+                "Для урона от атаки используй ровно выпавшее число из [Результат броска]."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "target": {"type": "string", "description": "Имя того, чьё ХП меняется"},
+                    "delta": {"type": "integer", "description": "Изменение ХП: -7 урон, +10 лечение"},
+                    "reason": {"type": "string", "description": "Кратко, источник изменения"},
+                },
+                "required": ["target", "delta"],
+            },
+        },
+    }
+
+
+def hp_from_tool_args(args: dict) -> Optional[dict]:
+    """Normalize apply_hp tool arguments into an HP change."""
+    target = str(args.get("target", "")).strip()
+    delta = _to_int(args.get("delta"))
+    if not target or delta is None:
+        return None
+    return {"target": target, "delta": delta, "reason": str(args.get("reason", "")).strip()}
+
+
+def build_hp_instructions(use_tools: bool = False) -> str:
+    """System-prompt section teaching the model to report HP changes."""
+    if use_tools:
+        return (
+            "\n\n## Учёт здоровья — функция apply_hp\n"
+            "Каждый раз, когда чьё-то ХП меняется (урон, лечение, яд, отдых), вызывай функцию "
+            "**apply_hp** (delta отрицательный — урон, положительный — лечение). Для урона от "
+            "атаки бери ровно выпавшее число из строки «[Результат броска]». Не считай ХП в уме "
+            "и не пиши итоговые числа ХП — их посчитает и покажет система."
+        )
+    return (
+        "\n\n## Учёт здоровья — директива [[HP]]\n"
+        "Каждый раз, когда чьё-то ХП меняется (урон, лечение, яд, отдых), добавь служебную "
+        "директиву (можно несколько, по одной на цель):\n"
+        "   [[HP target=\"<имя>\" delta=\"<-7 урон / +10 лечение>\" reason=\"<кратко источник>\"]]\n"
+        "Для урона от атаки бери ровно выпавшее число из строки «[Результат броска]». "
+        "Не считай итоговые ХП сам и не выводи директиву как часть рассказа — её обработает система."
+    )
+
+
 def build_roll_instructions(rules: Optional[list[dict]], use_tools: bool = False) -> str:
     """Render the system-prompt section that teaches the model how to ask for rolls."""
     active = _enabled_categories(rules)
@@ -187,7 +240,8 @@ def build_roll_instructions(rules: Optional[list[dict]], use_tools: bool = False
 
 # ── Directive parsing ────────────────────────────────────────────────────────
 
-_DIRECTIVE_RE = re.compile(r"\[\[\s*ROLL\b(.*?)\]\]", re.IGNORECASE | re.DOTALL)
+# A single generic bracketed directive: [[NAME key="value" ...]]
+_ANY_DIRECTIVE_RE = re.compile(r"\[\[\s*(\w+)\b(.*?)\]\]", re.IGNORECASE | re.DOTALL)
 _KV_RE = re.compile(r'(\w+)\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s\]]+))')
 
 _VALID_TYPES = {t for types in _CATEGORY_TYPES.values() for t in types}
@@ -245,99 +299,132 @@ def _to_int(val) -> Optional[int]:
         return None
 
 
-def parse_directive(text: str) -> tuple[Optional[dict], str]:
-    """
-    Find the first [[ROLL ...]] directive in `text`.
-
-    Returns (spec, cleaned_text). `spec` is None when no directive is present.
-    `cleaned_text` always has the directive removed.
-    """
-    m = _DIRECTIVE_RE.search(text or "")
-    if not m:
-        return None, text
-
+def _parse_fields(rest: str) -> dict:
     fields = {}
-    for km in _KV_RE.finditer(m.group(1)):
+    for km in _KV_RE.finditer(rest):
         key = km.group(1).lower()
         val = km.group(2) or km.group(3) or km.group(4) or ""
         fields[key] = val.strip()
+    return fields
 
-    spec = {
-        "actor": fields.get("actor", "").strip(),
-        "type": _normalize_type(fields.get("type", "")),
-        "dc": _to_int(fields.get("dc")),
-        "reason": fields.get("reason", "").strip(),
-    }
 
-    cleaned = (text[: m.start()] + text[m.end():]).strip()
-    return spec, cleaned
+def extract_directives(text: str) -> tuple[Optional[dict], list[dict]]:
+    """
+    Scan `text` for all [[ROLL ...]] and [[HP ...]] directives.
+
+    Returns (roll_spec | None, hp_changes). Only the first ROLL is used (it gates
+    the turn); every HP change is collected (damage and healing, any target).
+    """
+    roll_spec = None
+    hp_changes = []
+    for m in _ANY_DIRECTIVE_RE.finditer(text or ""):
+        name = m.group(1).upper()
+        fields = _parse_fields(m.group(2))
+        if name == "ROLL" and roll_spec is None:
+            roll_spec = {
+                "actor": fields.get("actor", "").strip(),
+                "type": _normalize_type(fields.get("type", "")),
+                "dc": _to_int(fields.get("dc")),
+                "reason": fields.get("reason", "").strip(),
+            }
+        elif name == "HP":
+            target = fields.get("target", "").strip()
+            delta = _to_int(fields.get("delta"))
+            if target and delta is not None:
+                hp_changes.append({
+                    "target": target, "delta": delta,
+                    "reason": fields.get("reason", "").strip(),
+                })
+    return roll_spec, hp_changes
+
+
+def strip_directives(text: str) -> str:
+    cleaned = _ANY_DIRECTIVE_RE.sub("", text or "")
+    return re.sub(r"[ \t]{2,}", " ", cleaned).strip()
+
+
+def parse_directive(text: str) -> tuple[Optional[dict], str]:
+    """Back-compat: return (first roll spec | None, text with directives removed)."""
+    roll_spec, _ = extract_directives(text)
+    return roll_spec, strip_directives(text)
 
 
 # ── Streaming filter ─────────────────────────────────────────────────────────
 
 class DirectiveStreamFilter:
     """
-    Withholds a trailing [[ROLL ...]] directive from the live token stream so it
-    never flashes on screen, while still emitting all narration as it arrives.
+    Hides every [[ ... ]] directive (ROLL, HP, …) from the live token stream so
+    none flash on screen, while emitting all narration as it arrives. Handles
+    multiple directives in any position.
 
     Usage:
         filt = DirectiveStreamFilter()
         for chunk in tokens:
             for visible in filt.feed(chunk):
                 send(visible)
-        spec, cleaned_full, tail = filt.result()
+        roll_spec, hp_changes, cleaned, tail = filt.result()
         if tail:
             send(tail)
     """
 
-    _MARKER = "[[ROLL"
-
     def __init__(self):
-        self._full = ""       # entire raw text seen so far
-        self._emitted = 0     # length of `_full` already surfaced to the client
+        self._full = ""        # entire raw text seen so far
+        self._pending = ""     # undecided text (may contain a partial directive)
+        self._inside = False   # currently between [[ and ]]
+        self._emitted = ""     # visible text already surfaced to the client
 
     def feed(self, chunk: str):
         if not chunk:
             return
         self._full += chunk
-        safe = self._safe_index()
-        if safe > self._emitted:
-            out = self._full[self._emitted:safe]
-            self._emitted = safe
-            if out:
-                yield out
+        self._pending += chunk
+        while True:
+            if not self._inside:
+                idx = self._pending.find("[[")
+                if idx == -1:
+                    # Emit everything except a trailing "[" that might start "[[".
+                    if self._pending.endswith("["):
+                        out, self._pending = self._pending[:-1], "["
+                    else:
+                        out, self._pending = self._pending, ""
+                    if out:
+                        self._emitted += out
+                        yield out
+                    return
+                if idx > 0:
+                    out = self._pending[:idx]
+                    self._emitted += out
+                    yield out
+                self._pending = self._pending[idx + 2:]
+                self._inside = True
+            else:
+                jdx = self._pending.find("]]")
+                if jdx == -1:
+                    return  # directive not closed yet — keep withholding
+                self._pending = self._pending[jdx + 2:]
+                self._inside = False
 
-    def _safe_index(self) -> int:
-        """Largest index up to which it is safe to reveal text."""
-        idx = self._full.find(self._MARKER)
-        if idx != -1:
-            # Directive started — never reveal from here on during streaming.
-            return idx
-        # No full marker yet: hold back a trailing partial of the marker
-        # (e.g. text ends with "[[RO") so we don't leak the opening.
-        n = len(self._full)
-        maxhold = len(self._MARKER) - 1
-        for k in range(min(maxhold, n), 0, -1):
-            if self._full[n - k:] == self._MARKER[:k]:
-                return n - k
-        return n
-
-    def result(self) -> tuple[Optional[dict], str, str]:
+    def result(self) -> tuple[Optional[dict], list[dict], str, str]:
         """
         Finalize after the stream ends.
 
-        Returns (spec, cleaned_full_text, tail) where `tail` is any remaining
-        visible text that was withheld but is NOT part of the directive and
-        still needs to be sent to the client.
+        Returns (roll_spec, hp_changes, cleaned_full_text, tail) where `tail` is
+        leftover visible text not yet emitted.
         """
-        spec, cleaned = parse_directive(self._full)
-        if spec is None:
-            tail = self._full[self._emitted:]
-            return None, self._full, tail
-        # Everything before the directive start was either already emitted or
-        # belongs to `tail`; `cleaned` shares the same prefix as `_full`.
-        tail = cleaned[self._emitted:] if len(cleaned) >= self._emitted else ""
-        return spec, cleaned, tail
+        raw = self._full
+        if self._inside:
+            # Drop a dangling, never-closed "[[…" so it doesn't leak into output.
+            cut = raw.rfind("[[")
+            if cut != -1:
+                raw = raw[:cut]
+        roll_spec, hp_changes = extract_directives(raw)
+        cleaned = strip_directives(raw)
+        tail = ""
+        if not self._inside and self._pending:
+            tail = self._pending
+            self._emitted += tail
+        self._pending = ""
+        return roll_spec, hp_changes, cleaned, tail
 
 
 # ── Fallback: detect a roll request written in plain prose ────────────────────

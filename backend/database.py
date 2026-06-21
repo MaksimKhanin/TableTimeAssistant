@@ -36,6 +36,7 @@ def _migrate():
         "prompt_config": [
             ("roll_enforcement", "BOOLEAN DEFAULT 1"),
             ("roll_rules_json", "JSON"),
+            ("hp_tracking", "BOOLEAN DEFAULT 1"),
         ],
     }
     with engine.begin() as conn:
@@ -50,13 +51,17 @@ def _seed(db):
     from models import AdventureTemplate, PromptConfig
     from templates_data import BUILTIN_TEMPLATES
     from roll_directive import DEFAULT_ROLL_RULES
+    from llm import DEFAULT_SYSTEM_ADDENDUM, DEFAULT_TURN_REMINDER
 
-    # Ensure prompt config row exists
+    # Ensure prompt config row exists (seed sensible prompt defaults for new installs)
     cfg = db.get(PromptConfig, 1)
     if not cfg:
         db.add(PromptConfig(
-            id=1, system_addendum="", turn_reminder="",
+            id=1,
+            system_addendum=DEFAULT_SYSTEM_ADDENDUM,
+            turn_reminder=DEFAULT_TURN_REMINDER,
             roll_enforcement=True, roll_rules_json=DEFAULT_ROLL_RULES,
+            hp_tracking=True,
         ))
         db.commit()
     elif not cfg.roll_rules_json:

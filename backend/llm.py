@@ -42,6 +42,28 @@ def _save_persisted():
 _load_persisted()
 
 
+# Recommended defaults for the two user-editable prompt layers (📜 в UI).
+# Seeded for fresh installs; existing installs can paste them manually.
+DEFAULT_SYSTEM_ADDENDUM = (
+    "Язык: всегда отвечай на том же языке, на котором пишут игроки (по умолчанию — русский), "
+    "живым литературным слогом.\n"
+    "Тон: насыщенное тёмное фэнтези — напряжение, выбор с ценой, моральная неоднозначность.\n"
+    "Стиль: чувственные детали (звук, запах, свет, фактура). *Курсив* — атмосфера и ощущения, "
+    "**жирный** — имена, предметы, ключевые слова.\n"
+    "Объём: короткие динамичные абзацы в бою и экшене, развёрнутые — в исследовании и диалогах. "
+    "Не пиши «простыни» текста."
+)
+
+DEFAULT_TURN_REMINDER = (
+    "- Оставайся в роли ведущего; никогда не упоминай, что ты ИИ или языковая модель.\n"
+    "- ХП и статусы бери ТОЛЬКО из блока [Состояние отряда] выше — не выдумывай числа. "
+    "Если ХП = 0 — персонаж при смерти/без сознания, отыграй это.\n"
+    "- Не решай сам исход броска: опиши момент, запроси нужный бросок и дождись строки [Результат броска].\n"
+    "- Если предлагаешь игрокам выбор действий — НЕ запрашивай бросок в этом же ходу; сначала дождись их решения.\n"
+    "- Заканчивай ход короткой ясной развилкой: «Что вы делаете?»"
+)
+
+
 def get_config() -> dict:
     return dict(_config)
 
@@ -60,11 +82,12 @@ def build_system_prompt(
     roll_rules: list[dict] | None = None,
     roll_enforcement: bool = False,
     use_tools: bool = False,
+    hp_tracking: bool = False,
 ) -> str:
     char_lines = []
     for c in characters:
         line = (
-            f"- **{c['name']}** ({c['race']} {c['char_class']}, ур.{c['level']}): "
+            f"- **{c['name']}** ({c['race']} {c['char_class']}): "
             f"ХП {c['current_hp']}/{c['max_hp']}, КД {c['armor_class']}"
         )
         if c.get("abilities"):
@@ -99,6 +122,7 @@ def build_system_prompt(
     global_extra = f"\n\n## Дополнительные инструкции\n{system_addendum.strip()}" if system_addendum and system_addendum.strip() else ""
 
     roll_block = roll_directive.build_roll_instructions(roll_rules, use_tools=use_tools) if roll_enforcement else ""
+    roll_block += roll_directive.build_hp_instructions(use_tools=use_tools) if hp_tracking else ""
 
     return f"""Ты — {gm_role}, ведущий интерактивной ролевой игры в стиле Dungeons & Dragons.
 Ты НИКОГДА не выходишь из образа и не ссылаешься на то, что ты — языковая модель.{global_extra}
@@ -127,12 +151,16 @@ def build_system_prompt(
 - Если NPC меняет отношение к игрокам из-за их действий — покажи это.
 
 ### Боевые ситуации (D&D 5e)
-- В начале боя объявляй порядок инициативы (система уже бросила кубики — используй результаты).
-- Когда в контексте есть результат броска атаки (hit/miss) — интерпретируй его нарративно.
-- Описывай атаки врагов: что именно они делают, как выглядит удар.
+- Объявляй начало боя и порядок ходов; описывай атаки врагов — что именно они делают, как выглядит удар.
+- Исходы бросков приходят отдельной строкой «[Результат броска] …». Опирайся ИМЕННО на них и не выдумывай свои попадания/промахи и значения.
 - Если враг получает урон — опиши его реакцию. Если падает — дай ему «последние слова».
-- Критический удар (nat 20) — нечто особенное и запоминающееся. Промах (nat 1) — комичный или драматичный провал.
-- Между ходами задавай ситуацию: "Орк с окровавленным топором бросается на Торина — что делаешь?"
+- Критический удар — ТОЛЬКО когда на кубике d20 выпала натуральная 20 (в результате будет пометка «🌟 КРИТ»). Сумма ≥ 20 за счёт бонусов — это ОБЫЧНЫЙ удар, НЕ критический. Натуральная 1 (nat 1) — комичный или драматичный провал.
+- Враги действуют тактически: отступают при потерях, зовут подмогу, используют окружение.
+
+### Источник правды о состоянии (ВАЖНО)
+- Перед каждым ходом ты получаешь блок «[Состояние отряда]» с текущими ХП и статусами. Это ЕДИНСТВЕННЫЙ источник правды — не придумывай числа ХП и не противоречь блоку.
+- Описывай раны качественно («хромает», «кровь заливает глаз»), а точные ХП отслеживает система.
+- Если в блоке ХП персонажа = 0 — он без сознания или при смерти; отыграй это, не давай ему действовать как ни в чём не бывало.
 
 ### Правила мастерства
 - Действия игроков имеют последствия: мир реагирует и помнит.
@@ -310,21 +338,26 @@ async def stream_response(messages: list[dict], tools: list | None = None) -> As
                                 yield (kind, text)
                         break
 
-        # Native function call wins — emit it and stop (no continuation needed).
-        emitted_tool = False
+        # Surface native function calls. request_roll gates the turn; apply_hp is
+        # a side-effect that can occur several times.
+        emitted_roll = False
         for tc in tool_calls_collected:
             fn = tc.get("function", {}) if isinstance(tc, dict) else {}
-            if fn.get("name") == "request_roll":
-                args = fn.get("arguments") or {}
-                if isinstance(args, str):
-                    try:
-                        args = json.loads(args)
-                    except json.JSONDecodeError:
-                        args = {}
+            name = fn.get("name")
+            if name not in ("request_roll", "apply_hp"):
+                continue
+            args = fn.get("arguments") or {}
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except json.JSONDecodeError:
+                    args = {}
+            if name == "apply_hp":
+                yield ("hp_tool", json.dumps(args))
+            elif name == "request_roll" and not emitted_roll:
                 yield ("roll_tool", json.dumps(args))
-                emitted_tool = True
-                break
-        if emitted_tool:
+                emitted_roll = True
+        if emitted_roll:
             break
 
         truncated = finish_reason == "length"

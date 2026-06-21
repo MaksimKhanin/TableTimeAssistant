@@ -204,9 +204,33 @@ function selectTemplate(tmpl) {
 }
 
 // ── New Adventure form ────────────────────────────────────────────────────────
+// Point-buy rules (no levels). Fetched from the backend; defaults as fallback.
+let _charRules = {
+  stat_min: 3, stat_max: 20, point_budget: 90,
+  stat_keys: ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'],
+};
+async function ensureCharRules() {
+  try { _charRules = await api('GET', '/char-rules'); } catch {}
+}
+
+function updateCardPoints(card) {
+  const used = Array.from(card.querySelectorAll('.c-stat'))
+    .reduce((s, inp) => s + (parseInt(inp.value) || 0), 0);
+  const budget = _charRules.point_budget;
+  const rem = budget - used;
+  const bar = card.querySelector('.points-bar');
+  if (bar) {
+    bar.classList.toggle('over', rem < 0);
+    bar.querySelector('.points-used').textContent = used;
+    bar.querySelector('.points-rem').textContent = rem < 0
+      ? `перебор на ${-rem}` : `осталось ${rem}`;
+  }
+}
+
 function buildCharacterForms(count, prefill) {
   const container = document.getElementById('characters-forms');
   container.innerHTML = '';
+  const mn = _charRules.stat_min, mx = _charRules.stat_max;
   for (let i = 0; i < count; i++) {
     const p = prefill && prefill[i] ? prefill[i] : {};
     const card = document.createElement('div');
@@ -218,16 +242,16 @@ function buildCharacterForms(count, prefill) {
         <label>Имя</label>
         <input class="c-name" type="text" placeholder="Арагорн" value="${esc(p.name || '')}" />
       </div>
+      <div class="points-bar">Очки характеристик: <span class="points-used">0</span> / ${_charRules.point_budget} · <span class="points-rem"></span></div>
       <div class="stats-grid">
         <div class="stat-field"><label>Раса</label><input class="c-race" type="text" value="${esc(p.race || 'Human')}" /></div>
         <div class="stat-field"><label>Класс</label><input class="c-class" type="text" value="${esc(p.char_class || 'Fighter')}" /></div>
-        <div class="stat-field"><label>Уровень</label><input class="c-level" type="number" value="${p.level || 1}" min="1" max="20" /></div>
-        <div class="stat-field"><label>СИЛ</label><input class="c-str" type="number" value="${p.strength || 10}" min="1" max="20" /></div>
-        <div class="stat-field"><label>ЛОВ</label><input class="c-dex" type="number" value="${p.dexterity || 10}" min="1" max="20" /></div>
-        <div class="stat-field"><label>ТЕЛ</label><input class="c-con" type="number" value="${p.constitution || 10}" min="1" max="20" /></div>
-        <div class="stat-field"><label>ИНТ</label><input class="c-int" type="number" value="${p.intelligence || 10}" min="1" max="20" /></div>
-        <div class="stat-field"><label>МДР</label><input class="c-wis" type="number" value="${p.wisdom || 10}" min="1" max="20" /></div>
-        <div class="stat-field"><label>ХАР</label><input class="c-cha" type="number" value="${p.charisma || 10}" min="1" max="20" /></div>
+        <div class="stat-field"><label>СИЛ</label><input class="c-str c-stat" type="number" value="${p.strength || 10}" min="${mn}" max="${mx}" /></div>
+        <div class="stat-field"><label>ЛОВ</label><input class="c-dex c-stat" type="number" value="${p.dexterity || 10}" min="${mn}" max="${mx}" /></div>
+        <div class="stat-field"><label>ТЕЛ</label><input class="c-con c-stat" type="number" value="${p.constitution || 10}" min="${mn}" max="${mx}" /></div>
+        <div class="stat-field"><label>ИНТ</label><input class="c-int c-stat" type="number" value="${p.intelligence || 10}" min="${mn}" max="${mx}" /></div>
+        <div class="stat-field"><label>МДР</label><input class="c-wis c-stat" type="number" value="${p.wisdom || 10}" min="${mn}" max="${mx}" /></div>
+        <div class="stat-field"><label>ХАР</label><input class="c-cha c-stat" type="number" value="${p.charisma || 10}" min="${mn}" max="${mx}" /></div>
         <div class="stat-field"><label>Макс ХП</label><input class="c-hp" type="number" value="${p.max_hp || 10}" min="1" /></div>
         <div class="stat-field"><label>КД</label><input class="c-ac" type="number" value="${p.armor_class || 10}" min="1" /></div>
         <div class="stat-field"><label>Бонус атаки</label><input class="c-atk" type="number" value="${p.attack_bonus || 0}" /></div>
@@ -242,7 +266,10 @@ function buildCharacterForms(count, prefill) {
         <textarea class="c-background" rows="2" placeholder="Бывший солдат, ищущий искупления...">${esc(p.background || '')}</textarea>
       </div>
     `;
+    card.querySelectorAll('.c-stat').forEach(inp =>
+      inp.addEventListener('input', () => updateCardPoints(card)));
     container.appendChild(card);
+    updateCardPoints(card);
   }
 }
 
@@ -290,7 +317,6 @@ function collectCharacters() {
     name: card.querySelector('.c-name').value.trim() || `Персонаж ${i + 1}`,
     race: card.querySelector('.c-race').value.trim(),
     char_class: card.querySelector('.c-class').value.trim(),
-    level: parseInt(card.querySelector('.c-level').value) || 1,
     strength: parseInt(card.querySelector('.c-str').value) || 10,
     dexterity: parseInt(card.querySelector('.c-dex').value) || 10,
     constitution: parseInt(card.querySelector('.c-con').value) || 10,
@@ -398,6 +424,11 @@ function handleWSMessage(data) {
     showForcedRoll(data.spec, !!data.blocked);
   } else if (data.type === 'dice_result') {
     appendMessage('dice', data.content, null, true);
+  } else if (data.type === 'hp_update') {
+    appendMessage('dice', data.content, null, true);
+    // Live-refresh the party panel if it's currently open.
+    const partyView = document.getElementById('view-party');
+    if (partyView && !partyView.classList.contains('hidden')) loadPartyPanel();
   } else if (data.type === 'roll_cancelled') {
     pendingRollSpec = null;
     hideRollBar();
@@ -490,7 +521,7 @@ function buildHpCard(entity, isNpc, adventureId, refreshFn) {
   el.className = `party-char ${cssClass}`;
   const sub = isNpc
     ? `${esc(entity.role || (entity.is_enemy ? 'Враг' : 'Союзник'))} · КД ${entity.armor_class}`
-    : `${esc(entity.race)} ${esc(entity.char_class)} · Ур.${entity.level} · КД ${entity.armor_class}`;
+    : `${esc(entity.race)} ${esc(entity.char_class)} · КД ${entity.armor_class}`;
   el.innerHTML = `
     <div class="party-char-name">${esc(entity.name)}</div>
     <div class="party-char-sub">${sub}</div>
@@ -645,38 +676,44 @@ async function showForcedRoll(spec, blocked) {
     : 'Мастер требует бросок, чтобы продолжить повествование.';
   document.getElementById('forced-roll-type').textContent = rollTypeLabel(spec.type);
 
-  // Populate "who rolls" and preselect the actor named in the directive.
+  // Who rolls. If the GM named a specific character, lock to it — the player
+  // can't reassign the roll. NPCs never reach here (they auto-roll server-side).
   const actorSel = document.getElementById('forced-roll-actor');
   actorSel.innerHTML = '';
-  try {
-    const adv = await api('GET', `/adventures/${currentAdventureId}`);
-    adv.characters.forEach(c => {
-      const o = document.createElement('option');
-      o.value = `char:${c.id}`;
-      o.textContent = `${c.name} (${c.char_class})`;
-      actorSel.appendChild(o);
-    });
-    (adv.npcs || []).forEach(n => {
-      const o = document.createElement('option');
-      o.value = `npc:${n.id}`;
-      o.textContent = `${n.name} (${n.is_enemy ? '⚔ враг' : '🤝 союзник'})`;
-      actorSel.appendChild(o);
-    });
-    if (spec.actor) {
-      const want = spec.actor.trim().toLowerCase();
-      const match = Array.from(actorSel.options).find(o => o.textContent.toLowerCase().startsWith(want));
-      if (match) actorSel.value = match.value;
-    }
-  } catch {}
-
-  // DC row — hidden for initiative (no target number).
-  const dcRow = document.getElementById('forced-roll-dc-row');
-  if (spec.type === 'initiative') {
-    dcRow.classList.add('hidden');
+  if (spec.locked && spec.actor_id) {
+    const o = document.createElement('option');
+    o.value = `char:${spec.actor_id}`;
+    o.textContent = spec.actor_name || 'Персонаж';
+    actorSel.appendChild(o);
+    actorSel.value = o.value;
+    actorSel.disabled = true;
   } else {
+    actorSel.disabled = false;
+    try {
+      const adv = await api('GET', `/adventures/${currentAdventureId}`);
+      adv.characters.forEach(c => {   // players only — never roll for NPCs
+        const o = document.createElement('option');
+        o.value = `char:${c.id}`;
+        o.textContent = `${c.name} (${c.char_class})`;
+        actorSel.appendChild(o);
+      });
+      if (spec.actor) {
+        const want = spec.actor.trim().toLowerCase();
+        const match = Array.from(actorSel.options).find(o => o.textContent.toLowerCase().startsWith(want));
+        if (match) actorSel.value = match.value;
+      }
+    } catch {}
+  }
+
+  // DC row — only meaningful for saves, checks and attacks.
+  const dcRow = document.getElementById('forced-roll-dc-row');
+  const needsDc = spec.type === 'attack' || spec.type.startsWith('save_') || spec.type.startsWith('check_');
+  if (needsDc) {
     dcRow.classList.remove('hidden');
     document.getElementById('forced-roll-dc').value =
       spec.dc != null ? spec.dc : (spec.type === 'attack' ? 12 : 13);
+  } else {
+    dcRow.classList.add('hidden');
   }
 
   // Hybrid: d20 face for d20-based rolls, raw sum for damage / generic dice.
@@ -748,6 +785,7 @@ async function loadPromptConfig() {
     document.getElementById('prompt-system').value = cfg.system_addendum || '';
     document.getElementById('prompt-reminder').value = cfg.turn_reminder || '';
     document.getElementById('prompt-roll-enforcement').checked = cfg.roll_enforcement !== false;
+    document.getElementById('prompt-hp-tracking').checked = cfg.hp_tracking !== false;
     renderRollRules(cfg.roll_rules || []);
   } catch {}
 }
@@ -867,6 +905,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Home buttons
   document.getElementById('btn-new-adventure').addEventListener('click', async () => {
+    await ensureCharRules();
     document.getElementById('npc-forms').innerHTML = '';
     buildCharacterForms(3);
     showView('new');
@@ -896,6 +935,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const playerCount = parseInt(document.getElementById('adv-players').value);
     if (!title || !desc) { alert('Заполните название и описание приключения'); return; }
     const characters = collectCharacters();
+    // Point-buy guard: don't let any character exceed the budget.
+    const budget = _charRules.point_budget;
+    const over = characters.find(c => _charRules.stat_keys.reduce((s, k) => s + (c[k] || 0), 0) > budget);
+    if (over) {
+      alert(`У персонажа «${over.name}» сумма характеристик превышает лимит ${budget}. Уменьшите значения.`);
+      return;
+    }
     const npcs = collectNpcs();
     try {
       document.getElementById('btn-start-adventure').disabled = true;
@@ -956,6 +1002,7 @@ document.addEventListener('DOMContentLoaded', () => {
       system_addendum: document.getElementById('prompt-system').value,
       turn_reminder: document.getElementById('prompt-reminder').value,
       roll_enforcement: document.getElementById('prompt-roll-enforcement').checked,
+      hp_tracking: document.getElementById('prompt-hp-tracking').checked,
       roll_rules: collectRollRules(),
     });
     hideOverlay('prompts');
@@ -965,7 +1012,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!confirm('Сбросить настройки промптов и правил на значения по умолчанию?')) return;
     await api('PUT', '/prompt-config', {
       system_addendum: '', turn_reminder: '',
-      roll_enforcement: true, roll_rules: [],
+      roll_enforcement: true, hp_tracking: true, roll_rules: [],
     });
     await loadPromptConfig();
     hideOverlay('prompts');
@@ -996,6 +1043,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-load-models').addEventListener('click', populateModelsList);
 
   // Init
-  buildCharacterForms(3);
+  ensureCharRules().then(() => buildCharacterForms(3));
   loadAdventures();
 });

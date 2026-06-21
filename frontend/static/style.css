@@ -215,6 +215,18 @@ html, body, #app {
   flex-direction: column;
   gap: 8px;
 }
+/* ── Point-buy indicator ── */
+.points-bar {
+  font-size: 13px;
+  color: var(--text-dim);
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+.points-bar .points-used { color: var(--text); font-weight: 700; }
+.points-bar.over { color: var(--danger); }
+.points-bar.over .points-rem { font-weight: 700; }
+
 /* ── Docked roll prompt ── */
 .roll-bar {
   background: var(--bg);
