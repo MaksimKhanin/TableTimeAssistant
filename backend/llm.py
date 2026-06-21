@@ -228,6 +228,7 @@ async def stream_response(messages: list[dict]) -> AsyncGenerator[tuple[str, str
                 raise RuntimeError(f"Ollama {response.status_code}: {detail[:300]}")
 
             filt = ThinkFilter()
+            got_native_thinking = False
             async for line in response.aiter_lines():
                 if not line.strip():
                     continue
@@ -238,17 +239,23 @@ async def stream_response(messages: list[dict]) -> AsyncGenerator[tuple[str, str
                     # Ollama native thinking field (Ollama ≥0.9 with think:true)
                     thinking = msg.get("thinking") or ""
                     if thinking:
+                        got_native_thinking = True
                         yield ("think", thinking)
 
-                    # Regular content (may still contain <think> tags on older Ollama)
                     content = msg.get("content") or ""
                     if content:
-                        for kind, text in filt.feed(content):
-                            yield (kind, text)
+                        if got_native_thinking:
+                            # Native thinking already separated: content is the actual response
+                            yield ("text", content)
+                        else:
+                            # Fallback: model embeds <think> tags inside content stream
+                            for kind, text in filt.feed(content):
+                                yield (kind, text)
 
                     if data.get("done"):
-                        for kind, text in filt.flush():
-                            yield (kind, text)
+                        if not got_native_thinking:
+                            for kind, text in filt.flush():
+                                yield (kind, text)
                         break
                 except json.JSONDecodeError:
                     continue

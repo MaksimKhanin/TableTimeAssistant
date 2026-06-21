@@ -400,9 +400,9 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
                 else:
                     full_text += text
                     await websocket.send_json({"type": "chunk", "content": text})
-            await websocket.send_json({"type": "done"})
             if think_buf and show_thinking:
                 await websocket.send_json({"type": "think_done", "content": think_buf})
+            await websocket.send_json({"type": "done"})
             return full_text
 
         if not history:

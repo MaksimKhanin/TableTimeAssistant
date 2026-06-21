@@ -355,13 +355,17 @@ function handleWSMessage(data) {
         scrollChat();
       }
     }
+  } else if (data.type === 'think_done') {
+    appendThinkBlock(data.content);
   } else if (data.type === 'done') {
+    if (thinkingMsgEl && !thinkingMsgEl.dataset.streaming) {
+      // Spinner was never converted to a response bubble — remove it
+      thinkingMsgEl.remove();
+    }
     thinkingMsgEl = null;
     isThinking = false;
     setInputEnabled(true);
     scrollChat();
-  } else if (data.type === 'think_done') {
-    appendThinkBlock(data.content);
   } else if (data.type === 'error') {
     if (thinkingMsgEl) { thinkingMsgEl.remove(); thinkingMsgEl = null; }
     isThinking = false;
@@ -410,7 +414,12 @@ function appendThinkBlock(content) {
     block.classList.toggle('open');
     scrollChat();
   });
-  container.appendChild(block);
+  // Insert before the current spinner so thinking appears above the response
+  if (thinkingMsgEl) {
+    container.insertBefore(block, thinkingMsgEl);
+  } else {
+    container.appendChild(block);
+  }
   scrollChat();
 }
 
