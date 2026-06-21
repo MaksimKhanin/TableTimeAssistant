@@ -424,6 +424,11 @@ function handleWSMessage(data) {
     showForcedRoll(data.spec, !!data.blocked);
   } else if (data.type === 'dice_result') {
     appendMessage('dice', data.content, null, true);
+  } else if (data.type === 'hp_update') {
+    appendMessage('dice', data.content, null, true);
+    // Live-refresh the party panel if it's currently open.
+    const partyView = document.getElementById('view-party');
+    if (partyView && !partyView.classList.contains('hidden')) loadPartyPanel();
   } else if (data.type === 'roll_cancelled') {
     pendingRollSpec = null;
     hideRollBar();
@@ -780,6 +785,7 @@ async function loadPromptConfig() {
     document.getElementById('prompt-system').value = cfg.system_addendum || '';
     document.getElementById('prompt-reminder').value = cfg.turn_reminder || '';
     document.getElementById('prompt-roll-enforcement').checked = cfg.roll_enforcement !== false;
+    document.getElementById('prompt-hp-tracking').checked = cfg.hp_tracking !== false;
     renderRollRules(cfg.roll_rules || []);
   } catch {}
 }
@@ -996,6 +1002,7 @@ document.addEventListener('DOMContentLoaded', () => {
       system_addendum: document.getElementById('prompt-system').value,
       turn_reminder: document.getElementById('prompt-reminder').value,
       roll_enforcement: document.getElementById('prompt-roll-enforcement').checked,
+      hp_tracking: document.getElementById('prompt-hp-tracking').checked,
       roll_rules: collectRollRules(),
     });
     hideOverlay('prompts');
@@ -1005,7 +1012,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!confirm('Сбросить настройки промптов и правил на значения по умолчанию?')) return;
     await api('PUT', '/prompt-config', {
       system_addendum: '', turn_reminder: '',
-      roll_enforcement: true, roll_rules: [],
+      roll_enforcement: true, hp_tracking: true, roll_rules: [],
     });
     await loadPromptConfig();
     hideOverlay('prompts');

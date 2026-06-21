@@ -115,3 +115,5 @@ class PromptConfig(Base):
     # the session blocks until the player submits a result.
     roll_enforcement = Column(Boolean, default=True)
     roll_rules_json = Column(JSON, default=list)   # customizable trigger rules
+    # Auto-track HP: apply model-reported damage/healing to the DB automatically.
+    hp_tracking = Column(Boolean, default=True)

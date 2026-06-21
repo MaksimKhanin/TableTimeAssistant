@@ -82,6 +82,7 @@ def build_system_prompt(
     roll_rules: list[dict] | None = None,
     roll_enforcement: bool = False,
     use_tools: bool = False,
+    hp_tracking: bool = False,
 ) -> str:
     char_lines = []
     for c in characters:
@@ -121,6 +122,7 @@ def build_system_prompt(
     global_extra = f"\n\n## Дополнительные инструкции\n{system_addendum.strip()}" if system_addendum and system_addendum.strip() else ""
 
     roll_block = roll_directive.build_roll_instructions(roll_rules, use_tools=use_tools) if roll_enforcement else ""
+    roll_block += roll_directive.build_hp_instructions(use_tools=use_tools) if hp_tracking else ""
 
     return f"""Ты — {gm_role}, ведущий интерактивной ролевой игры в стиле Dungeons & Dragons.
 Ты НИКОГДА не выходишь из образа и не ссылаешься на то, что ты — языковая модель.{global_extra}
@@ -336,21 +338,26 @@ async def stream_response(messages: list[dict], tools: list | None = None) -> As
                                 yield (kind, text)
                         break
 
-        # Native function call wins — emit it and stop (no continuation needed).
-        emitted_tool = False
+        # Surface native function calls. request_roll gates the turn; apply_hp is
+        # a side-effect that can occur several times.
+        emitted_roll = False
         for tc in tool_calls_collected:
             fn = tc.get("function", {}) if isinstance(tc, dict) else {}
-            if fn.get("name") == "request_roll":
-                args = fn.get("arguments") or {}
-                if isinstance(args, str):
-                    try:
-                        args = json.loads(args)
-                    except json.JSONDecodeError:
-                        args = {}
+            name = fn.get("name")
+            if name not in ("request_roll", "apply_hp"):
+                continue
+            args = fn.get("arguments") or {}
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except json.JSONDecodeError:
+                    args = {}
+            if name == "apply_hp":
+                yield ("hp_tool", json.dumps(args))
+            elif name == "request_roll" and not emitted_roll:
                 yield ("roll_tool", json.dumps(args))
-                emitted_tool = True
-                break
-        if emitted_tool:
+                emitted_roll = True
+        if emitted_roll:
             break
 
         truncated = finish_reason == "length"

@@ -193,3 +193,4 @@ class PromptConfigUpdate(BaseModel):
     turn_reminder: str = ""
     roll_enforcement: bool = True
     roll_rules: list[RollRule] = []
+    hp_tracking: bool = True

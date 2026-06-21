@@ -370,6 +370,7 @@ def _prompt_config_dict(cfg) -> dict:
         "turn_reminder": cfg.turn_reminder or "",
         "roll_enforcement": bool(cfg.roll_enforcement),
         "roll_rules": cfg.roll_rules_json or roll_directive.DEFAULT_ROLL_RULES,
+        "hp_tracking": bool(cfg.hp_tracking),
     }
 
 
@@ -385,6 +386,7 @@ def update_prompt_config(data: schemas.PromptConfigUpdate, db: Session = Depends
     cfg.turn_reminder = data.turn_reminder
     cfg.roll_enforcement = data.roll_enforcement
     cfg.roll_rules_json = [r.model_dump() for r in data.roll_rules]
+    cfg.hp_tracking = data.hp_tracking
     db.commit()
     db.refresh(cfg)
     return _prompt_config_dict(cfg)
@@ -433,8 +435,14 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
         turn_reminder = prompt_cfg.turn_reminder if prompt_cfg else ""
         roll_rules = (prompt_cfg.roll_rules_json if prompt_cfg else None) or roll_directive.DEFAULT_ROLL_RULES
         roll_enforcement = bool(prompt_cfg.roll_enforcement) if prompt_cfg else False
+        hp_tracking = bool(prompt_cfg.hp_tracking) if prompt_cfg else False
         use_tools = bool(llm_client.get_config().get("use_tools", False))
-        roll_tools = roll_directive.build_roll_tools(roll_rules) if (roll_enforcement and use_tools) else None
+        active_tools = []
+        if use_tools and roll_enforcement:
+            active_tools += roll_directive.build_roll_tools(roll_rules)
+        if use_tools and hp_tracking:
+            active_tools.append(roll_directive.build_hp_tool())
+        active_tools = active_tools or None
 
         def build_chars_npcs():
             db.expire_all()
@@ -460,6 +468,7 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
         system_prompt = llm_client.build_system_prompt(
             adventure.description, adventure.gm_role, chars, npcs_data, system_addendum,
             roll_rules=roll_rules, roll_enforcement=roll_enforcement, use_tools=use_tools,
+            hp_tracking=hp_tracking,
         )
 
         history = db.query(models.Message).filter(
@@ -484,13 +493,14 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
                 messages.append({"role": h.role, "content": h.content})
 
         async def _stream_to_ws(msgs: list):
-            """Stream the GM turn to the client, withholding any roll directive.
-            Returns (cleaned_narration, roll_spec_or_None)."""
+            """Stream the GM turn to the client, hiding ROLL/HP directives.
+            Returns (cleaned_narration, roll_spec_or_None, hp_changes)."""
             show_thinking = llm_client.get_config().get("show_thinking", False)
             think_buf = ""
             tool_spec = None
+            tool_hp = []
             filt = roll_directive.DirectiveStreamFilter()
-            async for kind, text in llm_client.stream_response(msgs, tools=roll_tools):
+            async for kind, text in llm_client.stream_response(msgs, tools=active_tools):
                 if kind == "think":
                     think_buf += text
                 elif kind == "roll_tool":
@@ -498,19 +508,29 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
                         tool_spec = roll_directive.spec_from_tool_args(json.loads(text))
                     except Exception:
                         tool_spec = None
+                elif kind == "hp_tool":
+                    try:
+                        hp = roll_directive.hp_from_tool_args(json.loads(text))
+                        if hp:
+                            tool_hp.append(hp)
+                    except Exception:
+                        pass
                 else:
                     for visible in filt.feed(text):
                         await websocket.send_json({"type": "chunk", "content": visible})
-            spec, cleaned, tail = filt.result()
+            spec, hp_changes, cleaned, tail = filt.result()
             if tail:
                 await websocket.send_json({"type": "chunk", "content": tail})
-            # A native tool call takes priority over an inline directive.
+            # Native tool calls take priority over inline directives.
             if tool_spec is not None:
                 spec = tool_spec
+            if tool_hp:
+                hp_changes = tool_hp
             if think_buf and show_thinking:
                 await websocket.send_json({"type": "think_done", "content": think_buf})
-            await websocket.send_json({"type": "done"})
-            return cleaned, spec
+            # NOTE: 'done' is sent by generate_turn after HP changes are applied,
+            # so HP notes appear before the turn is finalized on the client.
+            return cleaned, spec, hp_changes
 
         async def record_dice(text: str, roll_data: dict, actor_name: str):
             """Persist a dice result, show it to the client, feed it back to the model."""
@@ -521,6 +541,42 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
             db.commit()
             await websocket.send_json({"type": "dice_result", "content": text})
             messages.append({"role": "user", "content": f"[Результат броска] {text}"})
+
+        async def apply_hp_changes(changes: list):
+            """Apply model-reported damage/healing to the DB and update the UI live."""
+            if not changes:
+                return
+            for ch in changes:
+                kind, actor = _resolve_actor(adventure, ch.get("target"))
+                if not actor:
+                    continue
+                delta = int(ch.get("delta") or 0)
+                if delta == 0:
+                    continue
+                before = actor.current_hp
+                actor.current_hp = max(0, min(actor.max_hp, before + delta))
+                if kind == "npc":
+                    actor.status = "dead" if actor.current_hp == 0 else "alive"
+                else:
+                    actor.status = "unconscious" if actor.current_hp == 0 else "alive"
+                db.commit()
+                sign = "💚" if delta > 0 else "💔"
+                verb = f"+{delta}" if delta > 0 else str(delta)
+                note = f"{sign} **{actor.name}**: {verb} ХП ({before} → {actor.current_hp})"
+                if actor.current_hp == 0:
+                    note += " — **повержен**" if kind == "npc" else " — **без сознания**"
+                db.add(models.Message(
+                    adventure_id=adventure_id, role="dice", content=note,
+                    player_name=actor.name, metadata_={"hp": actor.current_hp, "delta": delta},
+                ))
+                db.commit()
+                await websocket.send_json({
+                    "type": "hp_update", "content": note,
+                    "name": actor.name, "current_hp": actor.current_hp,
+                    "max_hp": actor.max_hp, "status": actor.status,
+                    "is_npc": kind == "npc",
+                })
+                messages.append({"role": "user", "content": f"[Изменение ХП] {note}"})
 
         async def auto_roll_npc(npc, spec: dict):
             """Enemies and NPCs roll automatically. A successful attack auto-rolls damage too."""
@@ -536,7 +592,7 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
             NPC rolls auto-resolve server-side (and chain into the next turn); a player
             roll blocks the session (pending_roll) and is locked to the named character."""
             await websocket.send_json({"type": "thinking"})
-            cleaned, spec = await _stream_to_ws(msgs)
+            cleaned, spec, hp_changes = await _stream_to_ws(msgs)
             if roll_enforcement:
                 # Fall back to prose detection when the model skipped the directive.
                 if spec is None:
@@ -545,6 +601,11 @@ async def websocket_game(websocket: WebSocket, adventure_id: int):
                     spec = roll_directive.apply_default_dc(spec, roll_rules)
             db.add(models.Message(adventure_id=adventure_id, role="assistant", content=cleaned))
             msgs.append({"role": "assistant", "content": cleaned})
+
+            # Apply any HP changes the GM reported (damage / healing) before gating.
+            if hp_tracking:
+                await apply_hp_changes(hp_changes)
+            await websocket.send_json({"type": "done"})
 
             if not (spec and roll_enforcement):
                 adventure.pending_roll = None

@@ -36,6 +36,7 @@ def _migrate():
         "prompt_config": [
             ("roll_enforcement", "BOOLEAN DEFAULT 1"),
             ("roll_rules_json", "JSON"),
+            ("hp_tracking", "BOOLEAN DEFAULT 1"),
         ],
     }
     with engine.begin() as conn:
@@ -60,6 +61,7 @@ def _seed(db):
             system_addendum=DEFAULT_SYSTEM_ADDENDUM,
             turn_reminder=DEFAULT_TURN_REMINDER,
             roll_enforcement=True, roll_rules_json=DEFAULT_ROLL_RULES,
+            hp_tracking=True,
         ))
         db.commit()
     elif not cfg.roll_rules_json:
