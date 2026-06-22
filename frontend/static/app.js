@@ -1370,6 +1370,18 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-check-llm').addEventListener('click', checkLLMStatus);
   document.getElementById('btn-load-models').addEventListener('click', populateModelsList);
 
+  // Debug panel
+  document.getElementById('btn-debug').addEventListener('click', () => {
+    const panel = document.getElementById('debug-panel');
+    const btn = document.getElementById('btn-debug');
+    const isHidden = panel.classList.toggle('hidden');
+    btn.classList.toggle('active', !isHidden);
+  });
+
+  document.getElementById('btn-combat-mode').addEventListener('click', () => {
+    startCombatMode();
+  });
+
   // Heroes page
   document.getElementById('btn-heroes').addEventListener('click', async () => {
     await loadHeroPresets();
@@ -1408,3 +1420,11 @@ document.addEventListener('DOMContentLoaded', () => {
   loadAdventures();
   loadHeroPresets();
 });
+
+// ── Debug: Combat Mode ──────────────────────────────────────────────────────
+
+function startCombatMode() {
+  // Placeholder: combat mode scenario will be implemented in the next iteration
+  console.log('[DEBUG] Combat mode triggered');
+  alert('⚔️ Боевой режим — в разработке');
+}
