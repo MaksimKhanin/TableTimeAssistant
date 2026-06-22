@@ -32,11 +32,36 @@ def _migrate():
     from sqlalchemy import text
 
     new_columns = {
-        "adventures": [("pending_roll", "JSON")],
+        "adventures": [("pending_roll", "JSON"), ("scene_state", "JSON")],
         "prompt_config": [
             ("roll_enforcement", "BOOLEAN DEFAULT 1"),
             ("roll_rules_json", "JSON"),
             ("hp_tracking", "BOOLEAN DEFAULT 1"),
+            ("referee_decide_system", "TEXT DEFAULT ''"),
+            ("referee_analyze_system", "TEXT DEFAULT ''"),
+        ],
+        # Custom 4-stat system columns (replaces D&D 6 stats + armor_class)
+        "characters": [
+            ("phys_defense", "INTEGER DEFAULT 2"),
+            ("mag_defense", "INTEGER DEFAULT 2"),
+            ("mental_defense", "INTEGER DEFAULT 7"),
+            ("phys_attack_bonus", "INTEGER DEFAULT 2"),
+            ("mag_attack_bonus", "INTEGER DEFAULT 2"),
+            ("mental_attack_bonus", "INTEGER DEFAULT 2"),
+        ],
+        "npcs": [
+            ("strength", "INTEGER DEFAULT 5"),
+            ("dexterity", "INTEGER DEFAULT 5"),
+            ("wisdom", "INTEGER DEFAULT 5"),
+            ("charisma", "INTEGER DEFAULT 5"),
+            ("phys_defense", "INTEGER DEFAULT 2"),
+            ("mag_defense", "INTEGER DEFAULT 2"),
+            ("mental_defense", "INTEGER DEFAULT 7"),
+        ],
+        "character_presets": [
+            ("phys_defense", "INTEGER DEFAULT 2"),
+            ("mag_defense", "INTEGER DEFAULT 2"),
+            ("mental_defense", "INTEGER DEFAULT 7"),
         ],
     }
     with engine.begin() as conn:

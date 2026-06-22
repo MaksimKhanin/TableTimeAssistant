@@ -12,6 +12,7 @@
     <div id="view-home" class="view active">
       <header class="top-bar">
         <h1>⚔️ DnD Game Master</h1>
+        <button class="icon-btn" id="btn-heroes" title="База героев">🧙</button>
         <button class="icon-btn" id="btn-prompts" title="Настройки промптов">📜</button>
         <button class="icon-btn" id="btn-settings" title="Настройки LLM">⚙️</button>
       </header>
@@ -47,16 +48,11 @@
           <label>Роль ведущего</label>
           <input id="adv-role" type="text" value="Dungeon Master" />
         </div>
-        <div class="form-group">
-          <label>Количество игроков</label>
-          <select id="adv-players">
-            <option value="1">1</option>
-            <option value="2">2</option>
-            <option value="3" selected>3</option>
-            <option value="4">4</option>
-          </select>
+        <div class="section-divider">
+          <span>Герои</span>
+          <button class="btn-secondary" id="btn-add-hero-slot" style="font-size:12px;padding:4px 10px">🧙 Добавить из базы</button>
         </div>
-        <div id="characters-forms"></div>
+        <div id="hero-slots"></div>
 
         <div class="section-divider">
           <span>NPC и враги</span>
@@ -76,6 +72,11 @@
         <button class="icon-btn" id="btn-save-template" title="Сохранить как шаблон">💾</button>
         <button class="icon-btn" id="btn-party">👥</button>
       </header>
+      <!-- Scene panel: location + objective banner, pinned under the title -->
+      <div id="scene-panel" class="scene-panel hidden">
+        <div class="scene-row"><span class="scene-label">📍</span><span id="scene-location"></span></div>
+        <div class="scene-row"><span class="scene-label">🎯</span><span id="scene-objective"></span></div>
+      </div>
       <div id="chat-messages"></div>
       <div class="input-area">
         <!-- Docked roll prompt (non-blocking: chat stays readable, party panel reachable) -->
@@ -123,12 +124,18 @@
           <h2>Настройки LLM</h2>
           <button class="close-btn" id="btn-close-settings">✕</button>
         </div>
+
+        <div class="section-divider"><span>🎭 Нарратор (основная модель)</span></div>
+        <div class="prompt-hint">Главная модель — пишет прозу, ведёт историю. Должна быть богатой и творческой.</div>
+
         <div class="form-group">
           <label>URL Ollama</label>
+          <div class="field-hint">Адрес запущенного Ollama-сервера. По умолчанию локальный.</div>
           <input id="llm-url" type="text" placeholder="http://localhost:11434" />
         </div>
         <div class="form-group">
-          <label>Модель</label>
+          <label>Модель нарратора</label>
+          <div class="field-hint">Любая модель из Ollama. Нажми «Загрузить» чтобы увидеть список доступных.</div>
           <div style="display:flex;gap:8px">
             <input id="llm-model" type="text" list="llm-models-list" placeholder="llama3" style="flex:1" />
             <button class="btn-secondary" id="btn-load-models" style="white-space:nowrap;padding:6px 12px">Загрузить</button>
@@ -137,26 +144,53 @@
           <div id="llm-models-hint" style="font-size:12px;color:var(--text-dim);margin-top:4px"></div>
         </div>
         <div class="form-group">
-          <label>Температура (0.1–2.0)</label>
-          <input id="llm-temp" type="number" step="0.1" min="0.1" max="2.0" />
+          <label>Температура нарратора <span class="param-range">(0.1–2.0, рек. 0.7–1.0)</span></label>
+          <div class="field-hint">
+            Влияет на <strong>непредсказуемость и разнообразие</strong> текста.<br>
+            <em>0.1–0.4</em> — сухо и предсказуемо. <em>0.7–1.0</em> — баланс творчества и связности.
+            <em>1.2+</em> — экспериментальный хаос, много ошибок.
+          </div>
+          <input id="llm-temp" type="number" step="0.05" min="0.1" max="2.0" />
         </div>
         <div class="form-group">
-          <label>Макс. токенов</label>
+          <label>Макс. токенов ответа <span class="param-range">(128–4096, рек. 512–1024)</span></label>
+          <div class="field-hint">
+            Жёсткий лимит длины одного ответа нарратора. Слишком мало — ответ обрежется на полуслове
+            (движок автоматически попросит продолжить, но это замедляет игру). Рек. 512–800 для динамичной игры.
+          </div>
           <input id="llm-tokens" type="number" step="64" min="128" max="4096" />
         </div>
         <div class="form-group">
           <label class="checkbox-label">
             <input type="checkbox" id="llm-show-thinking" />
-            Показывать размышления модели (Qwen3 и др.)
+            Показывать «размышления» модели (think-блоки, Qwen3 и др.)
           </label>
+          <div class="field-hint">Некоторые модели выводят внутренние рассуждения перед ответом. Включи, чтобы видеть их в чате (полезно для отладки).</div>
+        </div>
+
+        <div class="section-divider"><span>⚖️ Судья правил (служебная модель)</span></div>
+        <div class="prompt-hint">
+          Отдельная модель для механических решений: нужен ли бросок, сколько урона, где мы находимся.
+          Работает на <strong>низкой температуре</strong> — ей нужна точность, не творчество.
+          Возвращает строгий JSON. Можно оставить пустым — тогда используется нарратор, но это медленнее.
         </div>
         <div class="form-group">
-          <label class="checkbox-label">
-            <input type="checkbox" id="llm-use-tools" />
-            Использовать tool-calling для бросков (Qwen3, Llama 3.1, Mistral…)
-          </label>
-          <div class="field-hint">Модель запрашивает броски нативным вызовом функции. Если модель не поддерживает — оставьте выкл; сработает текстовая директива.</div>
+          <label>Модель судьи</label>
+          <div class="field-hint">Рекомендуется небольшая быстрая модель (3–8B параметров). Пусто = та же, что нарратор.</div>
+          <div style="display:flex;gap:8px">
+            <input id="llm-utility-model" type="text" list="llm-models-list" placeholder="(та же, что основная)" style="flex:1" />
+          </div>
         </div>
+        <div class="form-group">
+          <label>Температура судьи <span class="param-range">(0.0–0.5, рек. 0.0–0.1)</span></label>
+          <div class="field-hint">
+            <strong>Чем ниже — тем детерминированнее JSON-ответы.</strong>
+            Высокая температура здесь вредит: судья начинает «фантазировать» и ломает структуру ответа.
+            Рек. 0.0–0.1 для максимальной стабильности.
+          </div>
+          <input id="llm-utility-temp" type="number" step="0.05" min="0.0" max="0.5" />
+        </div>
+
         <div id="llm-status" class="status-badge"></div>
         <button class="btn-primary full" id="btn-save-llm">Сохранить</button>
         <button class="btn-secondary full" id="btn-check-llm">Проверить соединение</button>
@@ -191,9 +225,9 @@
         <div class="form-group">
           <label class="checkbox-label">
             <input type="checkbox" id="prompt-roll-enforcement" />
-            Требовать бросок, когда ГМ его объявляет (блокировать повествование)
+            Требовать броски (судья правил, блокирует повествование)
           </label>
-          <div class="field-hint">Когда включено, мастер обязан запрашивать броски директивой, а игра останавливается и ждёт ввод значений кубиков, прежде чем продолжить.</div>
+          <div class="field-hint">Когда включено, служебная модель-судья сама решает, нужен ли бросок — до и после хода ведущего. Игра останавливается и ждёт ввод кубика, прежде чем продолжить.</div>
         </div>
         <div class="form-group">
           <label class="checkbox-label">
@@ -205,8 +239,24 @@
         <div id="roll-rules-list"></div>
         <button class="btn-secondary" id="btn-add-roll-rule" style="margin-bottom:12px">+ Добавить правило-триггер</button>
 
+        <div class="section-divider"><span>⚖️ Промпты судьи правил (Referee)</span></div>
+        <div class="prompt-hint">
+          Судья правил (utility model) принимает решения по броскам, ХП и состоянию сцены.
+          Эти системные промпты определяют его поведение. Пусто = встроенный дефолт.
+        </div>
+        <div class="form-group">
+          <label>Системный промпт: решение о броске (PRE-PASS)</label>
+          <div class="field-hint">Запускается до каждого хода — решает, нужен ли бросок для действия игрока.</div>
+          <textarea id="prompt-referee-decide" rows="4" placeholder="Используй встроенный дефолт (оставь пустым)"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Системный промпт: анализ нарратива (POST-PASS)</label>
+          <div class="field-hint">Запускается после ответа ГМа — извлекает механику, ХП и варианты действий.</div>
+          <textarea id="prompt-referee-analyze" rows="4" placeholder="Используй встроенный дефолт (оставь пустым)"></textarea>
+        </div>
+
         <button class="btn-primary full" id="btn-save-prompts">Сохранить</button>
-        <button class="btn-secondary full" id="btn-reset-prompts">Сбросить</button>
+        <button class="btn-secondary full" id="btn-reset-prompts">Сбросить до дефолтов</button>
       </div>
     </div>
 
@@ -218,6 +268,44 @@
           <button class="close-btn" id="btn-close-dice">✕</button>
         </div>
         <div id="dice-options"></div>
+      </div>
+    </div>
+
+    <!-- VIEW: Heroes Library -->
+    <div id="view-heroes" class="view">
+      <header class="top-bar">
+        <button class="back-btn" data-target="home">← Назад</button>
+        <h1>🧙 База героев</h1>
+        <button class="icon-btn" id="btn-add-hero" title="Добавить героя">＋</button>
+      </header>
+      <div class="home-content">
+        <div class="prompt-hint" style="margin:0 0 12px">
+          Сохрани готовых персонажей и используй их в любом приключении — кнопка «Из базы» появится в форме создания героя.
+        </div>
+        <div id="heroes-list"></div>
+      </div>
+    </div>
+
+    <!-- VIEW: Preset Picker (overlay) — выбор героя из базы -->
+    <div id="view-preset-picker" class="overlay hidden">
+      <div class="overlay-panel preset-picker-panel">
+        <div class="overlay-header">
+          <h2>Выбери героя</h2>
+          <button class="close-btn" id="btn-close-preset-picker">✕</button>
+        </div>
+        <div id="preset-picker-list" class="preset-picker-list"></div>
+      </div>
+    </div>
+
+    <!-- VIEW: Add Hero (overlay) -->
+    <div id="view-add-hero" class="overlay hidden">
+      <div class="overlay-panel">
+        <div class="overlay-header">
+          <h2>Новый герой</h2>
+          <button class="close-btn" id="btn-close-add-hero">✕</button>
+        </div>
+        <div id="hero-form-fields"></div>
+        <button class="btn-primary full" id="btn-confirm-add-hero">Сохранить в базу</button>
       </div>
     </div>
 

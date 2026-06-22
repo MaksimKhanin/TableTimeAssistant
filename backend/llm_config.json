@@ -1,7 +1,10 @@
 {
   "base_url": "http://localhost:11434",
-  "model": "llama3",
+  "model": "qwen3.5:9b",
   "temperature": 0.8,
   "max_tokens": 2048,
-  "show_thinking": true
+  "show_thinking": false,
+  "use_tools": false,
+  "utility_model": "",
+  "utility_temperature": 0.1
 }

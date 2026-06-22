@@ -123,6 +123,9 @@ html, body, #app {
 .stat-field { display: flex; flex-direction: column; gap: 4px; }
 .stat-field label { font-size: 11px; color: var(--text-dim); }
 .stat-field input { padding: 6px 8px; font-size: 14px; }
+.stat-budget-info { font-size: 12px; color: var(--text-dim); margin: 6px 0 2px; }
+.stat-budget-used { font-weight: 700; color: var(--accent); }
+.derived-stats-info { font-size: 12px; background: var(--surface-2, var(--surface)); border-radius: 6px; padding: 6px 10px; margin-bottom: 8px; color: var(--text-dim); line-height: 1.6; }
 
 /* ── Adventure list ── */
 .adv-item {
@@ -248,6 +251,32 @@ html, body, #app {
 .roll-bar-cancel { background: none; border: none; color: var(--text-dim); font-size: 13px; cursor: pointer; text-align: left; padding: 0; }
 .roll-bar-cancel:hover { color: var(--text); }
 .message-row.hidden { display: none; }
+
+/* ── Inline roll prompt card ── */
+.msg.roll-prompt {
+  align-self: center;
+  max-width: 92%;
+  background: linear-gradient(135deg, var(--surface) 0%, var(--bg) 100%);
+  border: 2px solid var(--accent2);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.roll-prompt-header { font-size: 12px; color: var(--accent2); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.roll-prompt-type { font-size: 20px; font-weight: 700; color: var(--text); }
+.roll-prompt-reason { font-size: 13px; color: var(--text-dim); font-style: italic; }
+.roll-prompt-actor-row, .roll-prompt-dc { font-size: 13px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.roll-actor-sel { background: var(--surface); color: var(--text); border: 1px solid var(--surface2); border-radius: 6px; padding: 4px 8px; font-size: 13px; }
+.roll-prompt-actor strong, .roll-prompt-dc strong { color: var(--text); }
+.roll-prompt-controls { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.roll-prompt-manual { display: flex; gap: 8px; align-items: center; }
+.roll-manual-input { width: 90px; background: var(--surface); color: var(--text); border: 1px solid var(--surface2); border-radius: 8px; padding: 8px; }
+.roll-manual-btn, .roll-auto-btn { width: auto; padding: 8px 16px; }
+.roll-auto-btn { font-size: 15px; font-weight: 700; }
+.roll-cancel-btn { background: none; border: none; color: var(--text-dim); font-size: 12px; cursor: pointer; text-align: left; padding: 0; margin-top: 2px; }
+.roll-cancel-btn:hover { color: var(--text); }
 
 .player-select-row { display: flex; gap: 8px; }
 .player-select-row select {
@@ -592,3 +621,184 @@ html, body, #app {
   cursor: pointer;
   flex-shrink: 0;
 }
+
+/* ── Scene panel + "what next" choices (referee-driven) ── */
+.scene-panel {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--surface2);
+  display: flex;
+  flex-direction: row;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.scene-panel.hidden { display: none; }
+.scene-row {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.scene-row .scene-label { flex-shrink: 0; }
+.scene-row span:last-child { color: var(--text); }
+
+/* ── Preset Picker ───────────────────────────────────────────────────────── */
+.preset-picker-panel {
+  max-height: 85dvh;
+  display: flex;
+  flex-direction: column;
+}
+.preset-picker-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 2px;
+}
+.preset-picker-item {
+  background: var(--surface);
+  border: 1px solid var(--surface2);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.preset-picker-item:hover {
+  border-color: var(--accent2);
+  background: color-mix(in srgb, var(--surface2) 40%, var(--surface));
+}
+.preset-picker-item:active { transform: scale(0.99); }
+.preset-picker-name {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--accent2);
+  margin-bottom: 2px;
+}
+.preset-picker-sub {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.preset-picker-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.preset-picker-abilities {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-style: italic;
+  margin-top: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── LLM Settings extras ─────────────────────────────────────────────────── */
+.param-range {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-weight: normal;
+}
+
+/* ── Hero Slots (new adventure form) ────────────────────────────────────── */
+.hero-slot-empty {
+  color: var(--text-dim);
+  font-size: 13px;
+  text-align: center;
+  padding: 20px 0 8px;
+}
+.hero-slot-card {
+  background: var(--surface);
+  border: 1px solid var(--surface2);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 8px;
+}
+.hero-slot-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.hero-slot-name {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--accent2);
+}
+.hero-slot-sub {
+  font-size: 13px;
+  color: var(--text-dim);
+  flex: 1;
+}
+.hero-slot-remove { margin-left: auto; flex-shrink: 0; }
+.hero-slot-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.hero-slot-abilities {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-style: italic;
+  margin-top: 4px;
+}
+
+/* ── Hero Presets ────────────────────────────────────────────────────────── */
+.char-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.char-card-header h3 { margin: 0; }
+
+.hero-preset-card {
+  background: var(--surface);
+  border: 1px solid var(--surface2);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+.hero-preset-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.hero-preset-name {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--accent2);
+}
+.hero-preset-sub {
+  font-size: 13px;
+  color: var(--text-dim);
+  flex: 1;
+}
+.hero-preset-del {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.hero-preset-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.hero-preset-abilities {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 4px;
+  font-style: italic;
+}
+

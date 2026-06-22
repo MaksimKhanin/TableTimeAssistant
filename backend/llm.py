@@ -1,9 +1,15 @@
 import httpx
 import json
 import os
+import re
 from typing import AsyncGenerator
 
 import roll_directive
+from prompts_config import (
+    DEFAULT_SYSTEM_ADDENDUM,
+    DEFAULT_TURN_REMINDER,
+    NARRATION_SYSTEM_TEMPLATE,
+)
 
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "http://localhost:11434")
 LLM_MODEL = os.environ.get("LLM_MODEL", "llama3")
@@ -18,7 +24,11 @@ _config = {
     "temperature": LLM_TEMPERATURE,
     "max_tokens": LLM_MAX_TOKENS,
     "show_thinking": False,
-    "use_tools": False,   # native function-calling for roll requests (model must support it)
+    "use_tools": False,   # deprecated; mechanics are now decided by the utility referee
+    # Second model used by referee.py for strict-JSON rules decisions (rolls,
+    # HP, scene state). Empty → reuse the narration model. Keep it small/fast.
+    "utility_model": "",
+    "utility_temperature": 0.2,
 }
 
 
@@ -42,26 +52,7 @@ def _save_persisted():
 _load_persisted()
 
 
-# Recommended defaults for the two user-editable prompt layers (📜 в UI).
-# Seeded for fresh installs; existing installs can paste them manually.
-DEFAULT_SYSTEM_ADDENDUM = (
-    "Язык: всегда отвечай на том же языке, на котором пишут игроки (по умолчанию — русский), "
-    "живым литературным слогом.\n"
-    "Тон: насыщенное тёмное фэнтези — напряжение, выбор с ценой, моральная неоднозначность.\n"
-    "Стиль: чувственные детали (звук, запах, свет, фактура). *Курсив* — атмосфера и ощущения, "
-    "**жирный** — имена, предметы, ключевые слова.\n"
-    "Объём: короткие динамичные абзацы в бою и экшене, развёрнутые — в исследовании и диалогах. "
-    "Не пиши «простыни» текста."
-)
-
-DEFAULT_TURN_REMINDER = (
-    "- Оставайся в роли ведущего; никогда не упоминай, что ты ИИ или языковая модель.\n"
-    "- ХП и статусы бери ТОЛЬКО из блока [Состояние отряда] выше — не выдумывай числа. "
-    "Если ХП = 0 — персонаж при смерти/без сознания, отыграй это.\n"
-    "- Не решай сам исход броска: опиши момент, запроси нужный бросок и дождись строки [Результат броска].\n"
-    "- Если предлагаешь игрокам выбор действий — НЕ запрашивай бросок в этом же ходу; сначала дождись их решения.\n"
-    "- Заканчивай ход короткой ясной развилкой: «Что вы делаете?»"
-)
+# DEFAULT_SYSTEM_ADDENDUM и DEFAULT_TURN_REMINDER импортированы из prompts_config.py
 
 
 def get_config() -> dict:
@@ -86,9 +77,15 @@ def build_system_prompt(
 ) -> str:
     char_lines = []
     for c in characters:
+        str_val = c.get("strength", 5)
+        dex_val = c.get("dexterity", 5)
+        wis_val = c.get("wisdom", 5)
+        cha_val = c.get("charisma", 5)
         line = (
             f"- **{c['name']}** ({c['race']} {c['char_class']}): "
-            f"ХП {c['current_hp']}/{c['max_hp']}, КД {c['armor_class']}"
+            f"ХП {c['current_hp']}/{c['max_hp']}, "
+            f"СИЛ {str_val}/ЛОВ {dex_val}/МДР {wis_val}/ХАР {cha_val}, "
+            f"Защита: физ {c.get('phys_defense', dex_val//2)}/маг {c.get('mag_defense', wis_val//2)}/мент {c.get('mental_defense', 5+cha_val//2)}"
         )
         if c.get("abilities"):
             line += f". Способности: {c['abilities']}"
@@ -103,7 +100,10 @@ def build_system_prompt(
         entry = f"- **{n['name']}**"
         if n.get("role"):
             entry += f" [{n['role']}]"
-        entry += f": ХП {n['current_hp']}/{n['max_hp']}, КД {n['armor_class']}"
+        entry += (
+            f": ХП {n['current_hp']}/{n['max_hp']}, "
+            f"Защита физ {n.get('phys_defense', 2)}/маг {n.get('mag_defense', 0)}/мент {n.get('mental_defense', 5)}"
+        )
         if n.get("personality"):
             entry += f". Характер: {n['personality']}"
         if n.get("voice_style"):
@@ -119,57 +119,35 @@ def build_system_prompt(
     if allies:
         npc_section += "\n### Союзники и нейтральные NPC\n" + "\n".join(allies)
 
-    global_extra = f"\n\n## Дополнительные инструкции\n{system_addendum.strip()}" if system_addendum and system_addendum.strip() else ""
+    addendum_block = f"\n\n{system_addendum.strip()}" if system_addendum and system_addendum.strip() else ""
 
-    roll_block = roll_directive.build_roll_instructions(roll_rules, use_tools=use_tools) if roll_enforcement else ""
-    roll_block += roll_directive.build_hp_instructions(use_tools=use_tools) if hp_tracking else ""
+    # Hard constraints injected only when roll/HP mechanics are active.
+    mech_lines = []
+    if roll_enforcement:
+        mech_lines.append(
+            "Do not invent dice totals or roll outcomes. "
+            "When a check is required, describe the moment and stop — "
+            "the app sends a '[Roll result]' line with the actual outcome; narrate only after receiving it."
+        )
+    if hp_tracking:
+        mech_lines.append(
+            "Never write numeric HP values or compute damage yourself. "
+            "The '[Party state]' block is the only source of truth for HP."
+        )
+    mech_lines.append("Never output engine tags like [[...]].")
+    mech_block = "\n".join(mech_lines)
 
-    return f"""Ты — {gm_role}, ведущий интерактивной ролевой игры в стиле Dungeons & Dragons.
-Ты НИКОГДА не выходишь из образа и не ссылаешься на то, что ты — языковая модель.{global_extra}
+    base = NARRATION_SYSTEM_TEMPLATE.format(gm_role=gm_role)
+    return f"""{base}{addendum_block}
 
-## Мир и завязка
+{mech_block}
+
+## Adventure
 {adventure_description}
 
-## Персонажи игроков
+## Heroes
 {chr(10).join(char_lines)}
-{npc_section}
-
-## Как ты ведёшь игру
-
-### Нарратив и атмосфера
-- Описывай мир чувственно: звуки, запахи, свет, температура, текстуры.
-- Используй *курсив* для атмосферных описаний и внутренних ощущений.
-- Используй **жирный** для имён, важных объектов и ключевых слов.
-- Держи темп: короткие абзацы в экшен-сценах, длинные — в исследовании.
-
-### Отыгрыш персонажей (NPC и враги)
-- Каждый NPC — живой человек со своей мотивацией, страхами и желаниями.
-- Когда NPC говорит, пиши его реплику прямо в диалоге, со своим голосом:
-  Пример: *Торговец прищуривается.* "Три золотых, не меньше. Или убирайтесь."
-- Враги принимают тактические решения: отступают при потерях, зовут подмогу, используют окружение.
-- Злодеи не монологируют без причины — они действуют.
-- Если NPC меняет отношение к игрокам из-за их действий — покажи это.
-
-### Боевые ситуации (D&D 5e)
-- Объявляй начало боя и порядок ходов; описывай атаки врагов — что именно они делают, как выглядит удар.
-- Исходы бросков приходят отдельной строкой «[Результат броска] …». Опирайся ИМЕННО на них и не выдумывай свои попадания/промахи и значения.
-- Если враг получает урон — опиши его реакцию. Если падает — дай ему «последние слова».
-- Критический удар — ТОЛЬКО когда на кубике d20 выпала натуральная 20 (в результате будет пометка «🌟 КРИТ»). Сумма ≥ 20 за счёт бонусов — это ОБЫЧНЫЙ удар, НЕ критический. Натуральная 1 (nat 1) — комичный или драматичный провал.
-- Враги действуют тактически: отступают при потерях, зовут подмогу, используют окружение.
-
-### Источник правды о состоянии (ВАЖНО)
-- Перед каждым ходом ты получаешь блок «[Состояние отряда]» с текущими ХП и статусами. Это ЕДИНСТВЕННЫЙ источник правды — не придумывай числа ХП и не противоречь блоку.
-- Описывай раны качественно («хромает», «кровь заливает глаз»), а точные ХП отслеживает система.
-- Если в блоке ХП персонажа = 0 — он без сознания или при смерти; отыграй это, не давай ему действовать как ни в чём не бывало.
-
-### Правила мастерства
-- Действия игроков имеют последствия: мир реагирует и помнит.
-- Давай игрокам шанс на успех, но не делай мир безопасным.
-- Никогда не говори игроку, что он «не может» что-то сделать — покажи последствия.
-- Если игрок пытается что-то сложное — попроси бросок нужного навыка.
-- Язык ответа: всегда тот же, на котором пишут игроки.{roll_block}
-
-Начни с атмосферного вступления в мир приключения — погрузи игроков в него с первых строк."""
+{npc_section}"""
 
 
 class ThinkFilter:
@@ -381,6 +359,72 @@ async def get_full_response(messages: list[dict]) -> str:
         if kind == "text":
             parts.append(text)
     return "".join(parts)
+
+
+# ── Utility (non-streaming) calls for the rules referee ───────────────────────
+# These run the small, low-temperature `utility_model` and return text/JSON.
+# Used by referee.py to decide rolls, HP changes and scene state.
+
+def _strip_think_tags(text: str) -> str:
+    return re.sub(r"<think>.*?</think>", "", text or "", flags=re.DOTALL | re.IGNORECASE).strip()
+
+
+async def chat_text(
+    system: str,
+    user: str,
+    *,
+    model: str | None = None,
+    temperature: float | None = None,
+    num_predict: int = 500,
+    json_format: bool = False,
+) -> str:
+    cfg = get_config()
+    url = f"{cfg['base_url']}/api/chat"
+    payload = {
+        "model": model or cfg.get("utility_model") or cfg["model"],
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "stream": False,
+        "think": False,
+        "options": {
+            "temperature": cfg.get("utility_temperature", 0.2) if temperature is None else temperature,
+            "num_predict": num_predict,
+        },
+    }
+    if json_format:
+        payload["format"] = "json"
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        r = await client.post(url, json=payload)
+        if r.status_code >= 400:
+            raise RuntimeError(f"Ollama {r.status_code}: {r.text[:200]}")
+        data = r.json()
+    content = (data.get("message") or {}).get("content") or ""
+    return _strip_think_tags(content)
+
+
+async def chat_json(
+    system: str,
+    user: str,
+    fallback: dict,
+    *,
+    model: str | None = None,
+) -> dict:
+    """Strict-JSON utility call: try format=json, then a regex {...} salvage,
+    then the supplied fallback. Never raises."""
+    try:
+        raw = await chat_text(system, user, model=model, json_format=True)
+        return json.loads(raw)
+    except Exception:
+        try:
+            raw = await chat_text(system, user, model=model)
+            match = re.search(r"\{.*\}", raw, flags=re.DOTALL)
+            if match:
+                return json.loads(match.group(0))
+        except Exception:
+            pass
+    return fallback
 
 
 async def check_connection() -> dict:

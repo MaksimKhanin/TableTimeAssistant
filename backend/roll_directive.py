@@ -36,7 +36,8 @@ DEFAULT_ROLL_RULES = [
         "category": "save",
         "name": "Спасбросок",
         "when": "Персонаж должен избежать или ослабить эффект, который происходит С НИМ: "
-                "ловушка, area-заклинание, яд, страх, паралич, падение, взрывная волна.",
+                "ловушка, заклинание, яд, страх, паралич, падение, взрывная волна. "
+                "save_phys — физическая угроза; save_mag — магическая; save_mental — ментальная/социальная.",
         "die": "d20",
         "default_dc": 13,
         "enabled": True,
@@ -44,16 +45,21 @@ DEFAULT_ROLL_RULES = [
     {
         "category": "attack",
         "name": "Бросок атаки",
-        "when": "Персонаж атакует врага — оружием, заклинанием или приёмом — и исход попадания не предрешён.",
+        "when": "Персонаж атакует врага. "
+                "attack — физическая атака (d20+Ловкость/2); "
+                "mag_attack — заклинание (d20+Мудрость/2); "
+                "mental_attack — убеждение/обман/угроза (d20+Харизма/2). "
+                "Исход попадания не предрешён.",
         "die": "d20",
         "default_dc": None,
         "enabled": True,
     },
     {
         "category": "check",
-        "name": "Проверка характеристики / навыка",
-        "when": "Персонаж пытается сделать что-то сложное и неочевидное: взлом, убеждение, обман, "
-                "скрытность, акробатика, восприятие, атлетика, знание.",
+        "name": "Проверка характеристики",
+        "when": "Персонаж пытается сделать что-то сложное и неочевидное. "
+                "check_str — сила/атлетика; check_dex — ловкость/скрытность/акробатика; "
+                "check_wis — восприятие/знание/магия; check_cha — убеждение/обман вне боя.",
         "die": "d20",
         "default_dc": 13,
         "enabled": True,
@@ -70,9 +76,9 @@ DEFAULT_ROLL_RULES = [
 
 # Concrete directive `type` tokens exposed per category.
 _CATEGORY_TYPES = {
-    "save": ["save_str", "save_dex", "save_con", "save_int", "save_wis", "save_cha"],
-    "attack": ["attack"],
-    "check": ["check_str", "check_dex", "check_con", "check_int", "check_wis", "check_cha"],
+    "save": ["save_phys", "save_mag", "save_mental"],
+    "attack": ["attack", "mag_attack", "mental_attack"],
+    "check": ["check_str", "check_dex", "check_wis", "check_cha"],
     "initiative": ["initiative"],
 }
 
@@ -248,22 +254,31 @@ _VALID_TYPES = {t for types in _CATEGORY_TYPES.values() for t in types}
 
 # Tolerant normalization for sloppy model output.
 _TYPE_ALIASES = {
-    "save": "save_dex", "saving_throw": "save_dex", "savingthrow": "save_dex",
-    "strength": "save_str", "dexterity": "save_dex", "constitution": "save_con",
-    "intelligence": "save_int", "wisdom": "save_wis", "charisma": "save_cha",
-    "str": "save_str", "dex": "save_dex", "con": "save_con",
-    "int": "save_int", "wis": "save_wis", "cha": "save_cha",
-    "check": "check_dex", "skill": "check_dex", "ability": "check_dex",
-    "atk": "attack", "melee": "attack", "ranged": "attack", "spell_attack": "attack",
+    # saves
+    "save": "save_phys", "saving_throw": "save_phys", "savingthrow": "save_phys",
+    "save_str": "save_phys", "save_dex": "save_phys", "save_con": "save_phys",
+    "save_int": "save_mag", "save_wis": "save_mag", "save_cha": "save_mental",
+    "strength": "save_phys", "dexterity": "save_phys", "constitution": "save_phys",
+    "intelligence": "save_mag", "wisdom": "save_mag", "charisma": "save_mental",
+    "str": "save_phys", "dex": "save_phys", "con": "save_phys",
+    "int": "save_mag", "wis": "save_mag", "cha": "save_mental",
+    # checks
+    "check": "check_dex", "skill": "check_dex", "ability": "check_str",
+    # attacks
+    "atk": "attack", "melee": "attack", "ranged": "attack",
+    "spell_attack": "mag_attack", "spell": "mag_attack", "magic": "mag_attack",
+    "persuasion": "mental_attack", "deception": "mental_attack", "intimidation": "mental_attack",
+    # initiative
     "init": "initiative",
 }
 _STAT_WORDS = {
     "str": "str", "сил": "str", "strength": "str",
     "dex": "dex", "лов": "dex", "dexterity": "dex",
-    "con": "con", "тел": "con", "constitution": "con",
-    "int": "int", "инт": "int", "intelligence": "int",
     "wis": "wis", "мдр": "wis", "wisdom": "wis",
     "cha": "cha", "хар": "cha", "charisma": "cha",
+    # legacy → nearest
+    "con": "str", "тел": "str", "constitution": "str",
+    "int": "wis", "инт": "wis", "intelligence": "wis",
 }
 
 
@@ -433,12 +448,10 @@ class DirectiveStreamFilter:
 # emitted, we scan the narration for such phrases so the gate still triggers.
 
 _STAT_ROOTS = [
-    (("ловк", "dexterity", "увёрт", "уверт", "акробат", "скрытн", "реакц"), "dex"),
-    (("сил", "strength", "атлет", "мускул"), "str"),
-    (("тел", "constitution", "выносл", "стойкост", "телосл", "отрав", "яд"), "con"),
-    (("интелл", "intelligence", "разум", "знани", "анализ", "логик"), "int"),
-    (("мудр", "wisdom", "восприят", "внимател", "проницат", "интуиц", "воля"), "wis"),
-    (("харизм", "charisma", "обаян", "убежд", "запугив", "обман", "выступл"), "cha"),
+    (("ловк", "dexterity", "увёрт", "уверт", "акробат", "скрытн", "реакц", "физ"), "dex"),
+    (("сил", "strength", "атлет", "мускул", "телосл", "выносл"), "str"),
+    (("мудр", "wisdom", "восприят", "внимател", "проницат", "интуиц", "воля", "маг", "заклин"), "wis"),
+    (("харизм", "charisma", "обаян", "убежд", "запугив", "обман", "выступл", "мент"), "cha"),
 ]
 
 _ROLL_VERB_RE = re.compile(
@@ -497,7 +510,9 @@ def detect_roll_request(text: str, rules: Optional[list[dict]] = None) -> Option
         return None
 
     if "save" in active and has_save:
-        return {"actor": "", "type": f"save_{_find_stat(tail) or 'dex'}", "dc": None, "reason": "спасбросок"}
+        stat = _find_stat(tail)
+        save_type = {"str": "save_phys", "dex": "save_phys", "wis": "save_mag", "cha": "save_mental"}.get(stat or "dex", "save_phys")
+        return {"actor": "", "type": save_type, "dc": None, "reason": "спасбросок"}
     if "initiative" in active and has_init:
         return {"actor": "", "type": "initiative", "dc": None, "reason": "инициатива"}
     if "check" in active and ("провер" in tail or "навык" in tail) and has_verb:

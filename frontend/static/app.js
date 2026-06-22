@@ -6,6 +6,7 @@ let ws = null;
 let isThinking = false;
 let thinkingMsgEl = null;
 let pendingRollSpec = null;   // set while the GM is blocking on a required roll
+let _adventureCharacters = []; // cached character list for the current adventure
 
 // ── Roll type metadata ────────────────────────────────────────────────────────
 const ROLL_TYPE_LABELS = {
@@ -178,24 +179,22 @@ function selectTemplate(tmpl) {
   _selectedTemplateId = tmpl ? tmpl.id : null;
 
   if (!tmpl) {
-    // Clear to defaults
     document.getElementById('adv-title').value = '';
     document.getElementById('adv-desc').value = '';
     document.getElementById('adv-role').value = 'Dungeon Master';
-    document.getElementById('adv-players').value = '3';
-    buildCharacterForms(3);
+    _selectedHeroes = [];
+    renderHeroSlots();
     document.getElementById('npc-forms').innerHTML = '';
     return;
   }
 
-  // Fill fields
   document.getElementById('adv-title').value = tmpl.title;
   document.getElementById('adv-desc').value = tmpl.description;
   document.getElementById('adv-role').value = tmpl.gm_role;
-  document.getElementById('adv-players').value = String(tmpl.player_count);
 
-  // Rebuild character forms with template data
-  buildCharacterForms(tmpl.player_count, tmpl.characters_json);
+  // Do not pre-populate heroes from template — players pick heroes from their own preset library.
+  _selectedHeroes = [];
+  renderHeroSlots();
 
   // Rebuild NPC forms
   const npcContainer = document.getElementById('npc-forms');
@@ -206,81 +205,233 @@ function selectTemplate(tmpl) {
 // ── New Adventure form ────────────────────────────────────────────────────────
 // Point-buy rules (no levels). Fetched from the backend; defaults as fallback.
 let _charRules = {
-  stat_min: 3, stat_max: 20, point_budget: 90,
-  stat_keys: ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'],
+  stat_min: 1, stat_max: 20, point_budget: 30,
+  stat_keys: ['strength', 'dexterity', 'wisdom', 'charisma'],
 };
 async function ensureCharRules() {
   try { _charRules = await api('GET', '/char-rules'); } catch {}
 }
 
-function updateCardPoints(card) {
-  const used = Array.from(card.querySelectorAll('.c-stat'))
-    .reduce((s, inp) => s + (parseInt(inp.value) || 0), 0);
-  const budget = _charRules.point_budget;
-  const rem = budget - used;
-  const bar = card.querySelector('.points-bar');
-  if (bar) {
-    bar.classList.toggle('over', rem < 0);
-    bar.querySelector('.points-used').textContent = used;
-    bar.querySelector('.points-rem').textContent = rem < 0
-      ? `перебор на ${-rem}` : `осталось ${rem}`;
-  }
+
+// ── Hero Presets ───────────────────────────────────────────────────────────────
+let _heroPresets = [];
+
+async function loadHeroPresets() {
+  try { _heroPresets = await api('GET', '/character-presets'); } catch { _heroPresets = []; }
 }
 
-function buildCharacterForms(count, prefill) {
-  const container = document.getElementById('characters-forms');
-  container.innerHTML = '';
-  const mn = _charRules.stat_min, mx = _charRules.stat_max;
-  for (let i = 0; i < count; i++) {
-    const p = prefill && prefill[i] ? prefill[i] : {};
-    const card = document.createElement('div');
-    card.className = 'char-card';
-    card.dataset.index = i + 1;
-    card.innerHTML = `
-      <h3>Персонаж ${i + 1}</h3>
-      <div class="form-group">
-        <label>Имя</label>
-        <input class="c-name" type="text" placeholder="Арагорн" value="${esc(p.name || '')}" />
-      </div>
-      <div class="points-bar">Очки характеристик: <span class="points-used">0</span> / ${_charRules.point_budget} · <span class="points-rem"></span></div>
-      <div class="stats-grid">
-        <div class="stat-field"><label>Раса</label><input class="c-race" type="text" value="${esc(p.race || 'Human')}" /></div>
-        <div class="stat-field"><label>Класс</label><input class="c-class" type="text" value="${esc(p.char_class || 'Fighter')}" /></div>
-        <div class="stat-field"><label>СИЛ</label><input class="c-str c-stat" type="number" value="${p.strength || 10}" min="${mn}" max="${mx}" /></div>
-        <div class="stat-field"><label>ЛОВ</label><input class="c-dex c-stat" type="number" value="${p.dexterity || 10}" min="${mn}" max="${mx}" /></div>
-        <div class="stat-field"><label>ТЕЛ</label><input class="c-con c-stat" type="number" value="${p.constitution || 10}" min="${mn}" max="${mx}" /></div>
-        <div class="stat-field"><label>ИНТ</label><input class="c-int c-stat" type="number" value="${p.intelligence || 10}" min="${mn}" max="${mx}" /></div>
-        <div class="stat-field"><label>МДР</label><input class="c-wis c-stat" type="number" value="${p.wisdom || 10}" min="${mn}" max="${mx}" /></div>
-        <div class="stat-field"><label>ХАР</label><input class="c-cha c-stat" type="number" value="${p.charisma || 10}" min="${mn}" max="${mx}" /></div>
-        <div class="stat-field"><label>Макс ХП</label><input class="c-hp" type="number" value="${p.max_hp || 10}" min="1" /></div>
-        <div class="stat-field"><label>КД</label><input class="c-ac" type="number" value="${p.armor_class || 10}" min="1" /></div>
-        <div class="stat-field"><label>Бонус атаки</label><input class="c-atk" type="number" value="${p.attack_bonus || 0}" /></div>
-      </div>
-      <div class="stat-field"><label>Кости урона</label><input class="c-dmg" type="text" value="${esc(p.damage_dice || '1d6')}" /></div>
-      <div class="form-group">
-        <label>Способности / черты</label>
-        <textarea class="c-abilities" rows="2" placeholder="Второе дыхание, Боевой стиль: Дуэль...">${esc(p.abilities || '')}</textarea>
-      </div>
-      <div class="form-group">
-        <label>Предыстория</label>
-        <textarea class="c-background" rows="2" placeholder="Бывший солдат, ищущий искупления...">${esc(p.background || '')}</textarea>
-      </div>
-    `;
-    card.querySelectorAll('.c-stat').forEach(inp =>
-      inp.addEventListener('input', () => updateCardPoints(card)));
-    container.appendChild(card);
-    updateCardPoints(card);
+function renderHeroesList() {
+  const list = document.getElementById('heroes-list');
+  if (!list) return;
+  if (!_heroPresets.length) {
+    list.innerHTML = '<p style="color:var(--text-dim);text-align:center;padding:32px">Нет сохранённых героев. Нажми ＋ чтобы добавить.</p>';
+    return;
   }
+  list.innerHTML = '';
+  _heroPresets.forEach(h => {
+    const card = document.createElement('div');
+    card.className = 'hero-preset-card';
+    card.innerHTML = `
+      <div class="hero-preset-header">
+        <span class="hero-preset-name">${esc(h.name)}</span>
+        <span class="hero-preset-sub">${esc(h.race)} · ${esc(h.char_class)}</span>
+        <button class="remove-btn hero-preset-del" data-id="${h.id}" title="Удалить">✕</button>
+      </div>
+      <div class="hero-preset-stats">
+        <span>ХП ${h.max_hp}</span>
+        <span title="Физ.защита">ФЗ ${h.phys_defense ?? Math.floor((h.dexterity||5)/2)}</span>
+        <span title="Маг.защита">МЗ ${h.mag_defense ?? Math.floor((h.wisdom||5)/2)}</span>
+        <span title="Мент.защита">МТЗ ${h.mental_defense ?? (5+Math.floor((h.charisma||5)/2))}</span>
+        <span title="Сила">СИЛ ${h.strength}</span><span title="Ловкость">ЛОВ ${h.dexterity}</span>
+        <span title="Мудрость">МДР ${h.wisdom}</span><span title="Харизма">ХАР ${h.charisma}</span>
+      </div>
+      ${h.abilities ? `<div class="hero-preset-abilities">${esc(h.abilities)}</div>` : ''}
+    `;
+    card.querySelector('.hero-preset-del').addEventListener('click', async () => {
+      await api('DELETE', `/character-presets/${h.id}`);
+      await loadHeroPresets();
+      renderHeroesList();
+    });
+    list.appendChild(card);
+  });
+}
+
+let _presetPickerCallback = null;
+
+function openPresetPicker(onPick) {
+  _presetPickerCallback = onPick;
+  const list = document.getElementById('preset-picker-list');
+  list.innerHTML = '';
+  _heroPresets.forEach(h => {
+    const item = document.createElement('div');
+    item.className = 'preset-picker-item';
+    item.innerHTML = `
+      <div class="preset-picker-name">${esc(h.name)}</div>
+      <div class="preset-picker-sub">${esc(h.race)} · ${esc(h.char_class)}</div>
+      <div class="preset-picker-stats">
+        <span>ХП ${h.max_hp}</span>
+        <span title="Физ.защита">ФЗ ${h.phys_defense ?? Math.floor((h.dexterity||5)/2)}</span>
+        <span title="Маг.защита">МЗ ${h.mag_defense ?? Math.floor((h.wisdom||5)/2)}</span>
+        <span title="Мент.защита">МТЗ ${h.mental_defense ?? (5+Math.floor((h.charisma||5)/2))}</span>
+        <span title="Сила">СИЛ ${h.strength}</span>
+        <span title="Ловкость">ЛОВ ${h.dexterity}</span>
+        <span title="Мудрость">МДР ${h.wisdom}</span>
+        <span title="Харизма">ХАР ${h.charisma}</span>
+      </div>
+      ${h.abilities ? `<div class="preset-picker-abilities">${esc(h.abilities)}</div>` : ''}
+    `;
+    item.addEventListener('click', () => {
+      hideOverlay('preset-picker');
+      if (_presetPickerCallback) _presetPickerCallback(h);
+      _presetPickerCallback = null;
+    });
+    list.appendChild(item);
+  });
+  showOverlay('preset-picker');
+}
+
+function _derivedStats(str, dex, wis, cha) {
+  return {
+    max_hp: 10 + Math.floor(str / 2),
+    phys_defense: Math.floor(dex / 2),
+    mag_defense: Math.floor(wis / 2),
+    mental_defense: 5 + Math.floor(cha / 2),
+    phys_attack_bonus: Math.floor(dex / 2),
+    mag_attack_bonus: Math.floor(wis / 2),
+    mental_attack_bonus: Math.floor(cha / 2),
+  };
+}
+
+function buildPresetForm(container, prefill) {
+  const p = prefill || {};
+  const mn = _charRules.stat_min, mx = _charRules.stat_max;
+  const budget = _charRules.point_budget || 30;
+  const str = p.strength || 5, dex = p.dexterity || 5, wis = p.wisdom || 5, cha = p.charisma || 5;
+  const d = _derivedStats(str, dex, wis, cha);
+  container.innerHTML = `
+    <div class="form-group"><label>Имя</label>
+      <input class="c-name" type="text" placeholder="Арагорн" value="${esc(p.name || '')}" /></div>
+    <div class="stats-grid">
+      <div class="stat-field"><label>Раса</label><input class="c-race" type="text" value="${esc(p.race || 'Человек')}" /></div>
+      <div class="stat-field"><label>Класс</label><input class="c-class" type="text" value="${esc(p.char_class || 'Воин')}" /></div>
+      <div class="stat-field" title="Сила: +HP и +физ. урон (каждые 2 очка)">
+        <label>СИЛ</label><input class="c-str c-stat" type="number" value="${str}" min="${mn}" max="${mx}" /></div>
+      <div class="stat-field" title="Ловкость: +физ. защита и +физ. атака (каждые 2 очка); определяет инициативу">
+        <label>ЛОВ</label><input class="c-dex c-stat" type="number" value="${dex}" min="${mn}" max="${mx}" /></div>
+      <div class="stat-field" title="Мудрость: +маг. защита и +маг. атака/заклинания (каждые 2 очка)">
+        <label>МДР</label><input class="c-wis c-stat" type="number" value="${wis}" min="${mn}" max="${mx}" /></div>
+      <div class="stat-field" title="Харизма: +мент. защита и +убеждение/обман/угрозы (каждые 2 очка)">
+        <label>ХАР</label><input class="c-cha c-stat" type="number" value="${cha}" min="${mn}" max="${mx}" /></div>
+    </div>
+    <div class="stat-budget-info">
+      Использовано очков: <span class="stat-budget-used">${str+dex+wis+cha}</span> / ${budget}
+      &nbsp;<span class="stat-budget-warn" style="color:var(--danger,#e55);display:none">⚠ превышен лимит!</span>
+    </div>
+    <div class="derived-stats-info">
+      ХП <b>${d.max_hp}</b> · ФизЗащ <b>${d.phys_defense}</b> · МагЗащ <b>${d.mag_defense}</b> · МентЗащ <b>${d.mental_defense}</b>
+      · ФизАтк +<b>${d.phys_attack_bonus}</b> · МагАтк +<b>${d.mag_attack_bonus}</b> · МентАтк +<b>${d.mental_attack_bonus}</b>
+      · Урон <b>1d4+${Math.floor(str/2)}</b>
+    </div>
+    <div class="form-group"><label>Предыстория</label>
+      <textarea class="c-background" rows="2" placeholder="Откуда персонаж, что им движет...">${esc(p.background||'')}</textarea></div>
+  `;
+  // Live update budget counter and derived stats
+  container.querySelectorAll('.c-stat').forEach(inp => {
+    inp.addEventListener('input', () => {
+      const s = parseInt(container.querySelector('.c-str').value)||1;
+      const d2 = parseInt(container.querySelector('.c-dex').value)||1;
+      const w = parseInt(container.querySelector('.c-wis').value)||1;
+      const c = parseInt(container.querySelector('.c-cha').value)||1;
+      const total = s+d2+w+c;
+      container.querySelector('.stat-budget-used').textContent = total;
+      const warn = container.querySelector('.stat-budget-warn');
+      if (warn) warn.style.display = total > (_charRules.point_budget || 30) ? '' : 'none';
+      const der = _derivedStats(s, d2, w, c);
+      container.querySelector('.derived-stats-info').innerHTML =
+        `ХП <b>${der.max_hp}</b> · ФизЗащ <b>${der.phys_defense}</b> · МагЗащ <b>${der.mag_defense}</b> · МентЗащ <b>${der.mental_defense}</b>` +
+        ` · ФизАтк +<b>${der.phys_attack_bonus}</b> · МагАтк +<b>${der.mag_attack_bonus}</b> · МентАтк +<b>${der.mental_attack_bonus}</b>` +
+        ` · Урон <b>1d4+${Math.floor(s/2)}</b>`;
+    });
+  });
+}
+
+function readPresetForm(container) {
+  const g = sel => container.querySelector(sel);
+  const str = parseInt(g('.c-str').value) || 5;
+  const dex = parseInt(g('.c-dex').value) || 5;
+  const wis = parseInt(g('.c-wis').value) || 5;
+  const cha = parseInt(g('.c-cha').value) || 5;
+  const budget = _charRules.point_budget || 30;
+  if (str + dex + wis + cha > budget) {
+    throw new Error(`Сумма характеристик (${str+dex+wis+cha}) превышает лимит ${budget}`);
+  }
+  return {
+    name: g('.c-name').value.trim(),
+    race: g('.c-race').value.trim() || 'Человек',
+    char_class: g('.c-class').value.trim() || 'Воин',
+    strength: str, dexterity: dex, wisdom: wis, charisma: cha,
+    damage_dice: '1d4',
+    abilities: '',
+    background: (g('.c-background') ? g('.c-background').value.trim() : ''),
+  };
+}
+
+
+// ── Hero slots (replaces manual character forms) ───────────────────────────
+let _selectedHeroes = [];  // array of preset/character objects chosen for this adventure
+
+function renderHeroSlots() {
+  const container = document.getElementById('hero-slots');
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (!_selectedHeroes.length) {
+    const empty = document.createElement('div');
+    empty.className = 'hero-slot-empty';
+    empty.textContent = 'Нет выбранных героев. Нажми «🧙 Добавить из базы».';
+    container.appendChild(empty);
+    return;
+  }
+
+  _selectedHeroes.forEach((h, idx) => {
+    const card = document.createElement('div');
+    card.className = 'hero-slot-card';
+    card.innerHTML = `
+      <div class="hero-slot-header">
+        <span class="hero-slot-name">${esc(h.name)}</span>
+        <span class="hero-slot-sub">${esc(h.race)} · ${esc(h.char_class)}</span>
+        <button class="remove-btn hero-slot-remove" title="Убрать">✕</button>
+      </div>
+      <div class="hero-slot-stats">
+        <span>ХП ${h.max_hp}</span>
+        <span title="Физ.защита">ФЗ ${h.phys_defense ?? Math.floor((h.dexterity||5)/2)}</span>
+        <span title="Маг.защита">МЗ ${h.mag_defense ?? Math.floor((h.wisdom||5)/2)}</span>
+        <span title="Мент.защита">МТЗ ${h.mental_defense ?? (5+Math.floor((h.charisma||5)/2))}</span>
+        <span title="Сила">СИЛ ${h.strength}</span><span title="Ловкость">ЛОВ ${h.dexterity}</span>
+        <span title="Мудрость">МДР ${h.wisdom}</span><span title="Харизма">ХАР ${h.charisma}</span>
+      </div>
+      ${h.abilities ? `<div class="hero-slot-abilities">${esc(h.abilities)}</div>` : ''}
+    `;
+    card.querySelector('.hero-slot-remove').addEventListener('click', () => {
+      _selectedHeroes.splice(idx, 1);
+      renderHeroSlots();
+    });
+    container.appendChild(card);
+  });
 }
 
 function addNpcForm(prefill) {
   const p = prefill || {};
+  const mn = _charRules.stat_min || 1, mx = _charRules.stat_max || 20;
+  const budget = _charRules.point_budget || 30;
+  const str = p.strength || 5, dex = p.dexterity || 5, wis = p.wisdom || 5, cha = p.charisma || 5;
+  const d = _derivedStats(str, dex, wis, cha);
   const container = document.getElementById('npc-forms');
   const idx = container.children.length + 1;
   const card = document.createElement('div');
   card.className = 'npc-card';
   card.innerHTML = `
-    <h3>NPC ${idx}</h3>
+    <h3>Персонаж ${idx}</h3>
     <button class="remove-btn" title="Удалить">✕</button>
     <div class="form-group">
       <label>Имя</label>
@@ -294,10 +445,18 @@ function addNpcForm(prefill) {
           <option value="0" ${!p.is_enemy ? 'selected' : ''}>Союзник</option>
         </select>
       </div>
-      <div class="stat-field"><label>Макс ХП</label><input class="n-hp" type="number" value="${p.max_hp || 20}" min="1" /></div>
-      <div class="stat-field"><label>КД</label><input class="n-ac" type="number" value="${p.armor_class || 12}" min="1" /></div>
-      <div class="stat-field"><label>Бонус атаки</label><input class="n-atk" type="number" value="${p.attack_bonus || 3}" /></div>
-      <div class="stat-field"><label>Кости урона</label><input class="n-dmg" type="text" value="${esc(p.damage_dice || '1d8')}" /></div>
+      <div class="stat-field" title="Сила: +HP, +физ. урон"><label>СИЛ</label><input class="n-str n-stat" type="number" value="${str}" min="${mn}" max="${mx}" /></div>
+      <div class="stat-field" title="Ловкость: +физ. защита, +физ. атака, инициатива"><label>ЛОВ</label><input class="n-dex n-stat" type="number" value="${dex}" min="${mn}" max="${mx}" /></div>
+      <div class="stat-field" title="Мудрость: +маг. защита, +маг. атака"><label>МДР</label><input class="n-wis n-stat" type="number" value="${wis}" min="${mn}" max="${mx}" /></div>
+      <div class="stat-field" title="Харизма: +мент. защита, +убеждение/угрозы"><label>ХАР</label><input class="n-cha n-stat" type="number" value="${cha}" min="${mn}" max="${mx}" /></div>
+    </div>
+    <div class="stat-budget-info">
+      Очков: <span class="n-budget-used">${str+dex+wis+cha}</span> / ${budget}
+      <span class="n-budget-warn" style="color:var(--danger,#e55);display:none"> ⚠ превышен!</span>
+    </div>
+    <div class="derived-stats-info n-derived">
+      ХП <b>${d.max_hp}</b> · ФизЗащ <b>${d.phys_defense}</b> · МагЗащ <b>${d.mag_defense}</b> · МентЗащ <b>${d.mental_defense}</b>
+      · ФизАтк +<b>${d.phys_attack_bonus}</b> · Урон <b>1d4+${Math.floor(str/2)}</b>
     </div>
     <div class="form-group">
       <label>Характер и мотивация</label>
@@ -309,54 +468,70 @@ function addNpcForm(prefill) {
     </div>
   `;
   card.querySelector('.remove-btn').addEventListener('click', () => card.remove());
+  // Live update NPC derived stats
+  card.querySelectorAll('.n-stat').forEach(inp => {
+    inp.addEventListener('input', () => {
+      const s = parseInt(card.querySelector('.n-str').value)||1;
+      const d2 = parseInt(card.querySelector('.n-dex').value)||1;
+      const w = parseInt(card.querySelector('.n-wis').value)||1;
+      const c = parseInt(card.querySelector('.n-cha').value)||1;
+      const total = s+d2+w+c;
+      card.querySelector('.n-budget-used').textContent = total;
+      const warn = card.querySelector('.n-budget-warn');
+      if (warn) warn.style.display = total > budget ? '' : 'none';
+      const der = _derivedStats(s, d2, w, c);
+      card.querySelector('.n-derived').innerHTML =
+        `ХП <b>${der.max_hp}</b> · ФизЗащ <b>${der.phys_defense}</b> · МагЗащ <b>${der.mag_defense}</b> · МентЗащ <b>${der.mental_defense}</b>` +
+        ` · ФизАтк +<b>${der.phys_attack_bonus}</b> · Урон <b>1d4+${Math.floor(s/2)}</b>`;
+    });
+  });
   container.appendChild(card);
 }
 
 function collectCharacters() {
-  return Array.from(document.querySelectorAll('.char-card')).map((card, i) => ({
-    name: card.querySelector('.c-name').value.trim() || `Персонаж ${i + 1}`,
-    race: card.querySelector('.c-race').value.trim(),
-    char_class: card.querySelector('.c-class').value.trim(),
-    strength: parseInt(card.querySelector('.c-str').value) || 10,
-    dexterity: parseInt(card.querySelector('.c-dex').value) || 10,
-    constitution: parseInt(card.querySelector('.c-con').value) || 10,
-    intelligence: parseInt(card.querySelector('.c-int').value) || 10,
-    wisdom: parseInt(card.querySelector('.c-wis').value) || 10,
-    charisma: parseInt(card.querySelector('.c-cha').value) || 10,
-    max_hp: parseInt(card.querySelector('.c-hp').value) || 10,
-    armor_class: parseInt(card.querySelector('.c-ac').value) || 10,
-    attack_bonus: parseInt(card.querySelector('.c-atk').value) || 0,
-    damage_dice: card.querySelector('.c-dmg').value.trim() || '1d6',
-    abilities: card.querySelector('.c-abilities').value.trim(),
-    background: card.querySelector('.c-background').value.trim(),
+  return _selectedHeroes.map(h => ({
+    name: h.name,
+    race: h.race || 'Человек',
+    char_class: h.char_class || 'Воин',
+    strength: h.strength || 5,
+    dexterity: h.dexterity || 5,
+    wisdom: h.wisdom || 5,
+    charisma: h.charisma || 5,
+    damage_dice: h.damage_dice || '1d4',
+    abilities: h.abilities || '',
+    background: h.background || '',
   }));
 }
 
 function collectNpcs() {
-  return Array.from(document.querySelectorAll('.npc-card')).map(card => ({
-    name: card.querySelector('.n-name').value.trim() || 'NPC',
-    role: card.querySelector('.n-role').value.trim(),
-    is_enemy: parseInt(card.querySelector('.n-enemy').value),
-    max_hp: parseInt(card.querySelector('.n-hp').value) || 10,
-    armor_class: parseInt(card.querySelector('.n-ac').value) || 10,
-    attack_bonus: parseInt(card.querySelector('.n-atk').value) || 0,
-    damage_dice: card.querySelector('.n-dmg').value.trim() || '1d6',
-    personality: card.querySelector('.n-personality').value.trim(),
-    voice_style: card.querySelector('.n-voice').value.trim(),
-  }));
+  return Array.from(document.querySelectorAll('.npc-card')).map(card => {
+    const str = parseInt(card.querySelector('.n-str').value) || 5;
+    const dex = parseInt(card.querySelector('.n-dex').value) || 5;
+    const wis = parseInt(card.querySelector('.n-wis').value) || 5;
+    const cha = parseInt(card.querySelector('.n-cha').value) || 5;
+    return {
+      name: card.querySelector('.n-name').value.trim() || 'NPC',
+      role: card.querySelector('.n-role').value.trim(),
+      is_enemy: parseInt(card.querySelector('.n-enemy').value),
+      strength: str, dexterity: dex, wisdom: wis, charisma: cha,
+      personality: card.querySelector('.n-personality').value.trim(),
+      voice_style: card.querySelector('.n-voice').value.trim(),
+    };
+  });
 }
 
 // ── Game view ─────────────────────────────────────────────────────────────────
 async function openAdventure(id, title) {
   currentAdventureId = id;
   pendingRollSpec = null;
-  hideRollBar();
   setInputEnabled(true);
   document.getElementById('game-title').textContent = title;
   document.getElementById('chat-messages').innerHTML = '';
+  document.getElementById('scene-panel').classList.add('hidden');
   showView('game');
 
   const adv = await api('GET', `/adventures/${id}`);
+  _adventureCharacters = adv.characters || [];
   const sel = document.getElementById('player-select');
   sel.innerHTML = '';
   adv.characters.forEach(c => {
@@ -368,6 +543,9 @@ async function openAdventure(id, title) {
 
   const messages = await api('GET', `/adventures/${id}/messages`);
   messages.forEach(m => appendMessage(m.role, m.content, m.player_name, false));
+
+  // Restore the last scene panel + suggestions (unless a roll is mid-flight).
+  if (adv.scene_state) renderScene(adv.scene_state);
 
   connectWS(id);
 }
@@ -386,6 +564,7 @@ function connectWS(adventureId) {
 }
 
 function handleWSMessage(data) {
+  if (data.type !== 'chunk') console.log('[WS]', data.type, data);
   if (data.type === 'thinking') {
     if (!thinkingMsgEl) thinkingMsgEl = appendMessage('thinking', '...', null, true);
   } else if (data.type === 'chunk') {
@@ -417,11 +596,19 @@ function handleWSMessage(data) {
     setInputEnabled(!pendingRollSpec);
     scrollChat();
   } else if (data.type === 'roll_required') {
-    // GM is blocking until the player submits a dice roll.
+    // A pre-pass gate may leave a bare spinner (no streamed narration) — clear it.
+    if (thinkingMsgEl && !thinkingMsgEl.dataset.streaming) thinkingMsgEl.remove();
+    thinkingMsgEl = null;
+    const isNew = !pendingRollSpec;
     pendingRollSpec = data.spec;
     isThinking = false;
     setInputEnabled(false);
-    showForcedRoll(data.spec, !!data.blocked);
+    // Append a card for new rolls (not for re-sent "blocked" gate reminders).
+    if (!data.blocked && isNew) {
+      appendRollPromptCard(data.spec);
+    }
+  } else if (data.type === 'scene_update') {
+    renderScene(data);
   } else if (data.type === 'dice_result') {
     appendMessage('dice', data.content, null, true);
   } else if (data.type === 'hp_update') {
@@ -431,7 +618,6 @@ function handleWSMessage(data) {
     if (partyView && !partyView.classList.contains('hidden')) loadPartyPanel();
   } else if (data.type === 'roll_cancelled') {
     pendingRollSpec = null;
-    hideRollBar();
     setInputEnabled(true);
   } else if (data.type === 'error') {
     if (thinkingMsgEl) { thinkingMsgEl.remove(); thinkingMsgEl = null; }
@@ -466,6 +652,22 @@ function scrollChat() {
   c.scrollTop = c.scrollHeight;
 }
 
+// ── Scene panel (location + objective, driven by the referee) ─────────────────
+function renderScene(scene) {
+  if (!scene) return;
+  const panel = document.getElementById('scene-panel');
+  const loc = (scene.location || '').trim();
+  const obj = (scene.objective || '').trim();
+  if (loc || obj) {
+    document.getElementById('scene-location').textContent = loc || '—';
+    document.getElementById('scene-objective').textContent = obj || '—';
+    panel.title = scene.summary || '';
+    panel.classList.remove('hidden');
+  } else {
+    panel.classList.add('hidden');
+  }
+}
+
 function appendThinkBlock(content) {
   const container = document.getElementById('chat-messages');
   const block = document.createElement('div');
@@ -497,7 +699,7 @@ function setInputEnabled(enabled) {
 
 function sendMessage() {
   if (isThinking) return;
-  if (pendingRollSpec) { showForcedRoll(pendingRollSpec, true); return; }
+  if (pendingRollSpec) return; // roll pending — ignore chat input
   const content = document.getElementById('chat-input').value.trim();
   if (!content) return;
   const playerName = document.getElementById('player-select').value;
@@ -520,8 +722,8 @@ function buildHpCard(entity, isNpc, adventureId, refreshFn) {
   const cssClass = isNpc ? (entity.is_enemy ? 'enemy' : 'ally') : '';
   el.className = `party-char ${cssClass}`;
   const sub = isNpc
-    ? `${esc(entity.role || (entity.is_enemy ? 'Враг' : 'Союзник'))} · КД ${entity.armor_class}`
-    : `${esc(entity.race)} ${esc(entity.char_class)} · КД ${entity.armor_class}`;
+    ? `${esc(entity.role || (entity.is_enemy ? 'Враг' : 'Союзник'))} · ФЗ ${entity.phys_defense ?? entity.armor_class ?? 2}`
+    : `${esc(entity.race)} ${esc(entity.char_class)} · ФЗ ${entity.phys_defense ?? 2} МЗ ${entity.mag_defense ?? 2} МТЗ ${entity.mental_defense ?? 7}`;
   el.innerHTML = `
     <div class="party-char-name">${esc(entity.name)}</div>
     <div class="party-char-sub">${sub}</div>
@@ -669,6 +871,109 @@ async function loadDicePanel() {
   ]));
 }
 
+// ── Inline roll prompt card ───────────────────────────────────────────────────
+function appendRollPromptCard(spec) {
+  const container = document.getElementById('chat-messages');
+  const card = document.createElement('div');
+  card.className = 'msg roll-prompt';
+
+  const needsDc = spec.type === 'attack' || (spec.type || '').startsWith('save_') || (spec.type || '').startsWith('check_');
+  const dcVal = spec.dc != null ? spec.dc : (spec.type === 'attack' ? 12 : 13);
+  const typeLabel = rollTypeLabel(spec.type);
+  const reasonText = spec.reason ? `«${spec.reason}»` : '';
+
+  // Use cached characters — no async API call needed
+  const characters = _adventureCharacters;
+
+  // Build actor select
+  let actorSelectHTML = '';
+  if (spec.locked && spec.actor_id) {
+    const name = spec.actor_name || spec.actor || 'Персонаж';
+    actorSelectHTML = `<select class="roll-actor-sel" disabled>
+      <option value="${spec.actor_id}">${esc(name)}</option>
+    </select>`;
+  } else if (characters.length > 0) {
+    const want = (spec.actor || '').trim().toLowerCase();
+    const opts = characters.map(c => {
+      const selected = want && c.name.toLowerCase().startsWith(want) ? 'selected' : '';
+      return `<option value="${c.id}" ${selected}>${esc(c.name)} (${esc(c.char_class)})</option>`;
+    }).join('');
+    actorSelectHTML = `<select class="roll-actor-sel">${opts}</select>`;
+  } else {
+    actorSelectHTML = `<span style="color:var(--text-dim)">(персонаж)</span>`;
+  }
+
+  card.innerHTML = `
+    <div class="roll-prompt-header">🎲 Требуется бросок</div>
+    <div class="roll-prompt-type">${esc(typeLabel)}</div>
+    ${reasonText ? `<div class="roll-prompt-reason">${esc(reasonText)}</div>` : ''}
+    <div class="roll-prompt-actor-row">Персонаж: ${actorSelectHTML}</div>
+    ${needsDc ? `<div class="roll-prompt-dc">DC / КД: <strong>${dcVal}</strong></div>` : ''}
+    <div class="roll-prompt-controls">
+      <div class="roll-prompt-manual">
+        <input class="roll-manual-input" type="number" min="1" max="100"
+               placeholder="${isD20Type(spec.type) ? 'd20 (1–20)' : 'сумма'}" />
+        <button class="btn-secondary roll-manual-btn">Ввести вручную</button>
+      </div>
+      <button class="btn-primary roll-auto-btn">🎲 Бросить ${esc(typeLabel)}</button>
+    </div>
+    <button class="roll-cancel-btn">↩ Другое действие (отменить)</button>
+  `;
+
+  function getActorId() {
+    const sel = card.querySelector('.roll-actor-sel');
+    if (sel) return parseInt(sel.value) || null;
+    if (spec.actor_id) return spec.actor_id;
+    return characters.length > 0 ? characters[0].id : null;
+  }
+
+  function doRoll(auto) {
+    if (!pendingRollSpec) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) { alert('Нет соединения с сервером'); return; }
+
+    const actorId = getActorId();
+    if (!actorId) { alert('Не удалось определить персонажа.'); return; }
+
+    const payload = {
+      type: 'roll_result',
+      actor_type: 'char',
+      actor_id: actorId,
+      roll_type: spec.type,
+      dc: needsDc ? dcVal : null,
+    };
+
+    if (!auto) {
+      const v = parseInt(card.querySelector('.roll-manual-input').value);
+      if (Number.isNaN(v)) { alert('Введите значение кубика.'); return; }
+      if (isD20Type(spec.type)) payload.manual_die = v;
+      else payload.manual_total = v;
+    }
+
+    card.querySelectorAll('button').forEach(b => { b.disabled = true; });
+    card.querySelector('.roll-manual-input').disabled = true;
+
+    ws.send(JSON.stringify(payload));
+    pendingRollSpec = null;
+    isThinking = true;
+    setInputEnabled(false);
+  }
+
+  card.querySelector('.roll-auto-btn').addEventListener('click', () => doRoll(true));
+  card.querySelector('.roll-manual-btn').addEventListener('click', () => doRoll(false));
+  card.querySelector('.roll-cancel-btn').addEventListener('click', () => {
+    if (!pendingRollSpec) return;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'cancel_roll' }));
+    }
+    pendingRollSpec = null;
+    card.querySelectorAll('button').forEach(b => { b.disabled = true; });
+    setInputEnabled(true);
+  });
+
+  container.appendChild(card);
+  scrollChat();
+}
+
 // ── Forced roll (mandatory dice gate) ─────────────────────────────────────────
 async function showForcedRoll(spec, blocked) {
   document.getElementById('forced-roll-reason').textContent = spec.reason
@@ -779,14 +1084,20 @@ function submitForcedRoll(auto) {
 }
 
 // ── Prompt Config ─────────────────────────────────────────────────────────────
+function _applyPromptConfig(cfg) {
+  document.getElementById('prompt-system').value = cfg.system_addendum || '';
+  document.getElementById('prompt-reminder').value = cfg.turn_reminder || '';
+  document.getElementById('prompt-roll-enforcement').checked = cfg.roll_enforcement !== false;
+  document.getElementById('prompt-hp-tracking').checked = cfg.hp_tracking !== false;
+  document.getElementById('prompt-referee-decide').value = cfg.referee_decide_system || '';
+  document.getElementById('prompt-referee-analyze').value = cfg.referee_analyze_system || '';
+  renderRollRules(cfg.roll_rules || []);
+}
+
 async function loadPromptConfig() {
   try {
     const cfg = await api('GET', '/prompt-config');
-    document.getElementById('prompt-system').value = cfg.system_addendum || '';
-    document.getElementById('prompt-reminder').value = cfg.turn_reminder || '';
-    document.getElementById('prompt-roll-enforcement').checked = cfg.roll_enforcement !== false;
-    document.getElementById('prompt-hp-tracking').checked = cfg.hp_tracking !== false;
-    renderRollRules(cfg.roll_rules || []);
+    _applyPromptConfig(cfg);
   } catch {}
 }
 
@@ -848,7 +1159,9 @@ async function loadLLMSettings() {
     document.getElementById('llm-temp').value = cfg.temperature;
     document.getElementById('llm-tokens').value = cfg.max_tokens;
     document.getElementById('llm-show-thinking').checked = cfg.show_thinking || false;
-    document.getElementById('llm-use-tools').checked = cfg.use_tools || false;
+    document.getElementById('llm-utility-model').value = cfg.utility_model || '';
+    document.getElementById('llm-utility-temp').value =
+      cfg.utility_temperature !== undefined ? cfg.utility_temperature : 0.1;
   } catch {}
   await populateModelsList();
 }
@@ -905,9 +1218,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Home buttons
   document.getElementById('btn-new-adventure').addEventListener('click', async () => {
-    await ensureCharRules();
+    await loadHeroPresets();
     document.getElementById('npc-forms').innerHTML = '';
-    buildCharacterForms(3);
+    _selectedHeroes = [];
+    renderHeroSlots();
     showView('new');
     await loadTemplateCarousel();
   });
@@ -923,30 +1237,35 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // New adventure form
-  document.getElementById('adv-players').addEventListener('change', (e) => {
-    buildCharacterForms(parseInt(e.target.value));
+  document.getElementById('btn-add-hero-slot').addEventListener('click', async () => {
+    if (!_heroPresets.length) {
+      alert('База героев пуста. Добавь героев через кнопку 🧙 на главном экране.');
+      return;
+    }
+    if (_selectedHeroes.length >= 4) {
+      alert('Максимум 4 героя в приключении.');
+      return;
+    }
+    openPresetPicker(picked => {
+      _selectedHeroes.push({ ...picked });
+      renderHeroSlots();
+    });
   });
+
   document.getElementById('btn-add-npc').addEventListener('click', () => addNpcForm());
 
   document.getElementById('btn-start-adventure').addEventListener('click', async () => {
     const title = document.getElementById('adv-title').value.trim();
     const desc = document.getElementById('adv-desc').value.trim();
     const role = document.getElementById('adv-role').value.trim() || 'Dungeon Master';
-    const playerCount = parseInt(document.getElementById('adv-players').value);
     if (!title || !desc) { alert('Заполните название и описание приключения'); return; }
     const characters = collectCharacters();
-    // Point-buy guard: don't let any character exceed the budget.
-    const budget = _charRules.point_budget;
-    const over = characters.find(c => _charRules.stat_keys.reduce((s, k) => s + (c[k] || 0), 0) > budget);
-    if (over) {
-      alert(`У персонажа «${over.name}» сумма характеристик превышает лимит ${budget}. Уменьшите значения.`);
-      return;
-    }
+    if (!characters.length) { alert('Добавь хотя бы одного героя из базы.'); return; }
     const npcs = collectNpcs();
     try {
       document.getElementById('btn-start-adventure').disabled = true;
       const adv = await api('POST', '/adventures', {
-        title, description: desc, gm_role: role, player_count: playerCount, characters, npcs,
+        title, description: desc, gm_role: role, player_count: characters.length, characters, npcs,
       });
       showView('home');
       loadAdventures();
@@ -1004,18 +1323,26 @@ document.addEventListener('DOMContentLoaded', () => {
       roll_enforcement: document.getElementById('prompt-roll-enforcement').checked,
       hp_tracking: document.getElementById('prompt-hp-tracking').checked,
       roll_rules: collectRollRules(),
+      referee_decide_system: document.getElementById('prompt-referee-decide').value,
+      referee_analyze_system: document.getElementById('prompt-referee-analyze').value,
     });
     hideOverlay('prompts');
     alert('Настройки сохранены. Применятся к следующей сессии.');
   });
   document.getElementById('btn-reset-prompts').addEventListener('click', async () => {
-    if (!confirm('Сбросить настройки промптов и правил на значения по умолчанию?')) return;
+    if (!confirm('Сбросить все промпты на встроенные дефолты?')) return;
+    const defaults = await api('GET', '/prompt-config/defaults');
+    _applyPromptConfig(defaults);
     await api('PUT', '/prompt-config', {
-      system_addendum: '', turn_reminder: '',
-      roll_enforcement: true, hp_tracking: true, roll_rules: [],
+      system_addendum: defaults.system_addendum,
+      turn_reminder: defaults.turn_reminder,
+      roll_enforcement: defaults.roll_enforcement,
+      hp_tracking: defaults.hp_tracking,
+      roll_rules: defaults.roll_rules,
+      referee_decide_system: defaults.referee_decide_system,
+      referee_analyze_system: defaults.referee_analyze_system,
     });
-    await loadPromptConfig();
-    hideOverlay('prompts');
+    alert('Промпты сброшены до дефолтов.');
   });
 
   // Forced roll bar
@@ -1035,14 +1362,49 @@ document.addEventListener('DOMContentLoaded', () => {
       temperature: parseFloat(document.getElementById('llm-temp').value),
       max_tokens: parseInt(document.getElementById('llm-tokens').value),
       show_thinking: document.getElementById('llm-show-thinking').checked,
-      use_tools: document.getElementById('llm-use-tools').checked,
+      utility_model: document.getElementById('llm-utility-model').value.trim(),
+      utility_temperature: parseFloat(document.getElementById('llm-utility-temp').value) || 0.1,
     });
     hideOverlay('settings');
   });
   document.getElementById('btn-check-llm').addEventListener('click', checkLLMStatus);
   document.getElementById('btn-load-models').addEventListener('click', populateModelsList);
 
+  // Heroes page
+  document.getElementById('btn-heroes').addEventListener('click', async () => {
+    await loadHeroPresets();
+    renderHeroesList();
+    showView('heroes');
+  });
+
+  document.getElementById('btn-add-hero').addEventListener('click', () => {
+    ensureCharRules().then(() => {
+      buildPresetForm(document.getElementById('hero-form-fields'));
+      showOverlay('add-hero');
+    });
+  });
+
+  document.getElementById('btn-close-preset-picker').addEventListener('click', () => {
+    hideOverlay('preset-picker');
+    _presetPickerCallback = null;
+  });
+  document.getElementById('btn-close-add-hero').addEventListener('click', () => hideOverlay('add-hero'));
+
+  document.getElementById('btn-confirm-add-hero').addEventListener('click', async () => {
+    const container = document.getElementById('hero-form-fields');
+    const data = readPresetForm(container);
+    if (!data.name) { alert('Введи имя героя'); return; }
+    try {
+      await api('POST', '/character-presets', data);
+      hideOverlay('add-hero');
+      await loadHeroPresets();
+      renderHeroesList();
+    } catch (e) {
+      alert('Ошибка: ' + (e.message || e));
+    }
+  });
+
   // Init
-  ensureCharRules().then(() => buildCharacterForms(3));
   loadAdventures();
+  loadHeroPresets();
 });
