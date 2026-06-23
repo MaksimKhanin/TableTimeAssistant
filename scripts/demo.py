@@ -7,8 +7,7 @@ from __future__ import annotations
 import random
 
 from grokhanika.db import init_db, make_engine, make_session_factory, seed_all
-from grokhanika.engine.combat import Combat
-from grokhanika.engine.combatant import Combatant
+from grokhanika.engine import Combat, Combatant, Encounter, SimpleAIController
 
 
 def main() -> None:
@@ -26,28 +25,29 @@ def main() -> None:
                 f"физ.атака d20+{c.phys_attack_bonus}  маг.атака d20+{c.mag_attack_bonus}"
             )
 
-        print("\n=== Бой: партия против некроманта ===")
+        print("\n=== Бой: партия против некроманта (автобой ИИ) ===")
         rng = random.Random(7)
         party = [Combatant(cat[k], "party") for k in ("andryusha", "salli", "arseldor")]
         necromancer = Combatant(cat["necromancer"], "enemy")
         combat = Combat(party + [necromancer], rng=rng, session=session)
 
-        combat.fire_combat_start()  # некромант призывает гоблинов
-        order = combat.roll_initiative()
-        print("Инициатива:", " → ".join(c.name for c in order))
-
-        # один раунд: каждый бьёт первого доступного врага
-        for actor in order:
-            if not actor.can_act:
-                continue
-            targets = [t for t in combat.opponents_of(actor) if not t.is_dying]
-            if not targets:
-                break
-            combat.physical_attack(actor, targets[0])
+        encounter = Encounter(
+            combat,
+            controllers={"party": SimpleAIController(), "enemy": SimpleAIController()},
+            max_rounds=30,
+        )
+        outcome = encounter.run()
 
         print("\n--- Лог боя ---")
-        for line in combat.log:
+        for line in outcome.log:
             print(" ", line)
+
+        print(
+            f"\nИтог: победа стороны «{outcome.winner}» за {outcome.rounds} раунд(ов) "
+            f"({outcome.ended_by})"
+        )
+        for side, names in outcome.survivors.items():
+            print(f"  выжившие [{side}]: {', '.join(names) or '—'}")
 
 
 if __name__ == "__main__":

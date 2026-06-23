@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -13,6 +14,10 @@ from ..enums import ActivationSource, EffectTarget, HPState, Stat
 from ..db.models import Character, Creature
 from ..rules import attributes as attr
 from ..rules.effects import RuntimeEffect, add_effect
+
+# уникальные id участников боя в пределах процесса (призванные существа делят
+# card_id, поэтому для адресации цели нужен отдельный стабильный идентификатор)
+_uid_counter = itertools.count(1)
 
 
 @dataclass
@@ -44,12 +49,25 @@ class _ItemSnap:
     heal_dice: Optional[str]
     effects: list[RuntimeEffect] = field(default_factory=list)
     quantity: int = 1
+    # для томов и свитков — данные заклинания
+    spell_name: Optional[str] = None
+    spell_damage_dice: Optional[str] = None
+    spell_difficulty: Optional[int] = None
+
+    @property
+    def is_potion(self) -> bool:
+        return self.heal_dice is not None
+
+    @property
+    def is_spell_carrier(self) -> bool:
+        return self.spell_damage_dice is not None and self.spell_difficulty is not None
 
 
 class Combatant:
     """Активный участник боя."""
 
     def __init__(self, card, side: str) -> None:
+        self.uid: int = next(_uid_counter)
         self.card_id: int = card.id
         self.name: str = card.name
         self.side: str = side
@@ -123,6 +141,9 @@ class Combatant:
                     is_consumable=bool(getattr(item_card, "is_consumable", False)),
                     heal_dice=getattr(item_card, "heal_dice", None),
                     effects=[RuntimeEffect.from_orm(e) for e in item_card.effects],
+                    spell_name=getattr(item_card, "spell_name", None),
+                    spell_damage_dice=getattr(item_card, "damage_dice", None),
+                    spell_difficulty=getattr(item_card, "difficulty", None),
                 )
             )
             self._gather_abilities(item_card)

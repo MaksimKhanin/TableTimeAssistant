@@ -101,6 +101,10 @@ class Combat:
     def add_combatant(self, combatant: Combatant) -> None:
         self.combatants.append(combatant)
 
+    def get(self, uid: int) -> Optional[Combatant]:
+        """Найти участника по его уникальному ``uid``."""
+        return next((c for c in self.combatants if c.uid == uid), None)
+
     def sides(self) -> set[str]:
         return {c.side for c in self.combatants}
 
@@ -229,6 +233,40 @@ class Combat:
             f"{'половина ' if saved else ''}{damage} урона"
         )
         self._fire_hit(caster, defender, result)
+        return result
+
+    def cast_from_carrier(
+        self, caster: Combatant, defender: Combatant, carrier_card_id: int
+    ) -> Optional[SpellResult]:
+        """Скастовать заклинание из тома/свитка в инвентаре.
+
+        Переиспользует ``magical_attack``. Свиток (``is_consumable``) расходуется
+        и исчезает из инвентаря после применения (§9).
+        """
+        carrier = next(
+            (
+                it
+                for it in caster.inventory
+                if it.card_id == carrier_card_id and it.is_spell_carrier
+            ),
+            None,
+        )
+        if carrier is None:
+            self.log.append(f"{caster.name}: нет такого носителя заклинания")
+            return None
+
+        result = self.magical_attack(
+            caster,
+            defender,
+            damage_dice=carrier.spell_damage_dice,
+            difficulty=carrier.spell_difficulty,
+        )
+        if carrier.is_consumable:
+            carrier.quantity -= 1
+            if carrier.quantity <= 0:
+                caster.inventory.remove(carrier)
+            caster.recompute_active_effects()
+            self.log.append(f"{caster.name}: свиток «{carrier.name}» израсходован")
         return result
 
     # ───────── ментальная атака (§10) ─────────
@@ -400,3 +438,7 @@ class Combat:
     def fire_combat_start(self) -> None:
         for c in list(self.combatants):
             fire_abilities(c, AbilityTrigger.ON_COMBAT_START, self._ctx(c))
+
+    def trigger(self, actor: Combatant, trigger, target: Optional[Combatant] = None) -> list[str]:
+        """Запустить способности участника по произвольному триггеру (напр. начало хода)."""
+        return fire_abilities(actor, trigger, self._ctx(actor, target), target=target)
