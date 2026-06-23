@@ -1,0 +1,316 @@
+"""ORM-модели «Гроханики» (SQLAlchemy 2.0).
+
+Все игровые объекты — это *карточки* (манифест §1). Реализовано через
+joined-table inheritance: общая таблица ``cards`` (id, тип, имя, арт,
+уникальность) + отдельная таблица под каждый тип карточки. Так каждый тип
+свободно описывает свои поля без «широкой» таблицы с кучей NULL.
+
+Карточки шаблонны и переиспользуемы (одна «Кожаная броня» на нескольких
+персонажей). Состояние конкретного боя живёт не здесь, а в ``engine.combatant``.
+"""
+from __future__ import annotations
+
+from typing import Optional
+
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Table,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+from ..enums import CardType
+
+
+class Base(DeclarativeBase):
+    """Базовый декларативный класс."""
+
+
+# ───────────────────────── базовая карточка ─────────────────────────
+
+
+class Card(Base):
+    """Общий предок всех карточек.
+
+    ``card_type`` — дискриминатор. ``image_id`` — ключ во внешнюю таблицу
+    изображений (арт меняется без правки карточки, манифест §1).
+    """
+
+    __tablename__ = "cards"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    card_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str] = mapped_column(String, default="")
+    image_id: Mapped[Optional[str]] = mapped_column(String(120), default=None)
+    is_unique: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    effects: Mapped[list["Effect"]] = relationship(
+        back_populates="owner",
+        cascade="all, delete-orphan",
+        foreign_keys="Effect.owner_card_id",
+    )
+    abilities: Mapped[list["Ability"]] = relationship(
+        back_populates="owner",
+        cascade="all, delete-orphan",
+        foreign_keys="Ability.owner_card_id",
+    )
+
+    __mapper_args__ = {
+        "polymorphic_on": card_type,
+        "polymorphic_identity": "card",
+    }
+
+    def __repr__(self) -> str:  # pragma: no cover - удобство отладки
+        return f"<{type(self).__name__} id={self.id} name={self.name!r}>"
+
+
+# ───────────────────────── эффекты ─────────────────────────
+
+
+class Effect(Base):
+    """Числовой модификатор stat/attr (манифест §5).
+
+    Игрок видит только итоговые атрибуты. ``source_id`` из манифеста — это id
+    карточки-владельца (``owner_card_id``).
+    """
+
+    __tablename__ = "effects"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_card_id: Mapped[Optional[int]] = mapped_column(ForeignKey("cards.id"))
+
+    description: Mapped[str] = mapped_column(String, default="")
+    target_type: Mapped[str] = mapped_column(String(8))   # stat | attr
+    target: Mapped[str] = mapped_column(String(24))
+    modifier: Mapped[int] = mapped_column(Integer, default=0)
+    duration: Mapped[int] = mapped_column(Integer, default=0)  # 0 = постоянный
+    source_type: Mapped[str] = mapped_column(String(12))
+    activation_source: Mapped[Optional[str]] = mapped_column(String(24), default=None)
+    visible_to_player: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_stackable: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    owner: Mapped[Optional["Card"]] = relationship(
+        back_populates="effects", foreign_keys=[owner_card_id]
+    )
+
+    @property
+    def source_id(self) -> Optional[int]:
+        """Псевдоним под терминологию манифеста (source_id == owner_card_id)."""
+        return self.owner_card_id
+
+
+# ───────────────────────── способности (data-driven) ─────────────────────────
+
+
+class Ability(Base):
+    """Уникальная способность по схеме «триггер → действия» (data-driven).
+
+    ``actions`` — список словарей-действий, например::
+
+        [{"type": "summon", "creature_id": 7, "count": 2}]
+        [{"type": "instakill"}]
+
+    Сами действия интерпретирует ``engine.abilities``. ``chance`` —
+    вероятность срабатывания (например, мгновенное убийство по шансу).
+    """
+
+    __tablename__ = "abilities"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_card_id: Mapped[Optional[int]] = mapped_column(ForeignKey("cards.id"))
+
+    name: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str] = mapped_column(String, default="")
+    trigger: Mapped[str] = mapped_column(String(24))
+    chance: Mapped[Optional[float]] = mapped_column(Float, default=None)
+    once_per_combat: Mapped[bool] = mapped_column(Boolean, default=False)
+    condition: Mapped[Optional[dict]] = mapped_column(JSON, default=None)
+    actions: Mapped[list] = mapped_column(JSON, default=list)
+
+    owner: Mapped[Optional["Card"]] = relationship(
+        back_populates="abilities", foreign_keys=[owner_card_id]
+    )
+
+
+# ───────────────────────── снаряжение ─────────────────────────
+
+
+class Weapon(Card):
+    """Оружие — отдельный слот (манифест §4, §14)."""
+
+    __tablename__ = "weapons"
+
+    id: Mapped[int] = mapped_column(ForeignKey("cards.id"), primary_key=True)
+    damage_dice: Mapped[str] = mapped_column(String(8), default="1d4")
+    str_requirement: Mapped[Optional[int]] = mapped_column(Integer, default=None)
+    dex_requirement: Mapped[Optional[int]] = mapped_column(Integer, default=None)
+    price: Mapped[Optional[int]] = mapped_column(Integer, default=None)
+    is_ranged: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    __mapper_args__ = {"polymorphic_identity": CardType.WEAPON.value}
+
+
+class Armor(Card):
+    """Броня — отдельный слот. ``phys_def_bonus`` входит в формулу физзащиты."""
+
+    __tablename__ = "armor"
+
+    id: Mapped[int] = mapped_column(ForeignKey("cards.id"), primary_key=True)
+    phys_def_bonus: Mapped[int] = mapped_column(Integer, default=0)
+    str_requirement: Mapped[Optional[int]] = mapped_column(Integer, default=None)
+    dex_requirement: Mapped[Optional[int]] = mapped_column(Integer, default=None)
+    price: Mapped[Optional[int]] = mapped_column(Integer, default=None)
+
+    __mapper_args__ = {"polymorphic_identity": CardType.ARMOR.value}
+
+
+class Item(Card):
+    """Предмет инвентаря: зелье, талисман, щит и т.д. (манифест §4)."""
+
+    __tablename__ = "items"
+
+    id: Mapped[int] = mapped_column(ForeignKey("cards.id"), primary_key=True)
+    price: Mapped[Optional[int]] = mapped_column(Integer, default=None)
+    is_consumable: Mapped[bool] = mapped_column(Boolean, default=False)
+    # для зелий лечения — кубики хила (манифест §14)
+    heal_dice: Mapped[Optional[str]] = mapped_column(String(8), default=None)
+
+    __mapper_args__ = {"polymorphic_identity": CardType.ITEM.value}
+
+
+class _SpellCarrierMixin:
+    """Общие поля носителей одного заклинания (том и свиток)."""
+
+    spell_name: Mapped[str] = mapped_column(String(120), default="")
+    damage_dice: Mapped[Optional[str]] = mapped_column(String(8), default=None)
+    heal_dice: Mapped[Optional[str]] = mapped_column(String(8), default=None)
+    difficulty: Mapped[Optional[int]] = mapped_column(Integer, default=None)
+    attack_stat: Mapped[str] = mapped_column(String(12), default="wisdom")
+    price: Mapped[Optional[int]] = mapped_column(Integer, default=None)
+
+
+class SpellBook(Card, _SpellCarrierMixin):
+    """Том магии: 1 заклинание, многоразово (манифест §6)."""
+
+    __tablename__ = "spellbooks"
+
+    id: Mapped[int] = mapped_column(ForeignKey("cards.id"), primary_key=True)
+
+    __mapper_args__ = {"polymorphic_identity": CardType.SPELLBOOK.value}
+
+    @property
+    def is_consumable(self) -> bool:
+        return False
+
+
+class Scroll(Card, _SpellCarrierMixin):
+    """Свиток: 1 заклинание, одноразово — исчезает после применения (§6, §9)."""
+
+    __tablename__ = "scrolls"
+
+    id: Mapped[int] = mapped_column(ForeignKey("cards.id"), primary_key=True)
+
+    __mapper_args__ = {"polymorphic_identity": CardType.SCROLL.value}
+
+    @property
+    def is_consumable(self) -> bool:
+        return True
+
+
+class Instrument(Card):
+    """Инструмент — немагические способности (лютня, барабан). Задел на будущее."""
+
+    __tablename__ = "instruments"
+
+    id: Mapped[int] = mapped_column(ForeignKey("cards.id"), primary_key=True)
+    price: Mapped[Optional[int]] = mapped_column(Integer, default=None)
+
+    __mapper_args__ = {"polymorphic_identity": CardType.INSTRUMENT.value}
+
+
+# ───────────────────────── персонажи и существа ─────────────────────────
+
+
+character_inventory = Table(
+    "character_inventory",
+    Base.metadata,
+    Column("character_id", ForeignKey("characters.id"), primary_key=True),
+    Column("card_id", ForeignKey("cards.id"), primary_key=True),
+    Column("quantity", Integer, default=1, nullable=False),
+    UniqueConstraint("character_id", "card_id", name="uq_character_card"),
+)
+
+
+class Character(Card):
+    """Персонаж — игрок (PC) или мастерский (NPC) (манифест §0, §2).
+
+    При ``is_player=True`` действует пойнт-бай: база 5, +10 очков на
+    распределение, минимум 1 (валидируется в ``rules.validation``). NPC
+    (``is_player=False``) задаётся напрямую и не валидируется.
+    """
+
+    __tablename__ = "characters"
+
+    id: Mapped[int] = mapped_column(ForeignKey("cards.id"), primary_key=True)
+    is_player: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_sentient: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    base_strength: Mapped[int] = mapped_column(Integer, default=5)
+    base_dexterity: Mapped[int] = mapped_column(Integer, default=5)
+    base_wisdom: Mapped[int] = mapped_column(Integer, default=5)
+    base_charisma: Mapped[int] = mapped_column(Integer, default=5)
+
+    # None => при загрузке считается полным от максимума
+    current_hp: Mapped[Optional[int]] = mapped_column(Integer, default=None)
+    money: Mapped[int] = mapped_column(Integer, default=0)
+
+    equipped_weapon_id: Mapped[Optional[int]] = mapped_column(ForeignKey("weapons.id"))
+    equipped_armor_id: Mapped[Optional[int]] = mapped_column(ForeignKey("armor.id"))
+
+    equipped_weapon: Mapped[Optional["Weapon"]] = relationship(
+        foreign_keys=[equipped_weapon_id]
+    )
+    equipped_armor: Mapped[Optional["Armor"]] = relationship(
+        foreign_keys=[equipped_armor_id]
+    )
+    inventory: Mapped[list["Card"]] = relationship(
+        secondary=character_inventory,
+        primaryjoin="Character.id == character_inventory.c.character_id",
+        secondaryjoin="Card.id == character_inventory.c.card_id",
+    )
+
+    __mapper_args__ = {
+        "polymorphic_identity": CardType.CHARACTER.value,
+        "inherit_condition": id == Card.id,
+    }
+
+
+class Creature(Card):
+    """Существо/монстр (манифест §13). Защиты задаются напрямую, не через DEX."""
+
+    __tablename__ = "creatures"
+
+    id: Mapped[int] = mapped_column(ForeignKey("cards.id"), primary_key=True)
+    is_sentient: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    hp: Mapped[int] = mapped_column(Integer, default=1)
+    current_hp: Mapped[Optional[int]] = mapped_column(Integer, default=None)
+    dexterity: Mapped[int] = mapped_column(Integer, default=0)  # для инициативы
+    phys_defense: Mapped[int] = mapped_column(Integer, default=0)
+    mag_defense: Mapped[int] = mapped_column(Integer, default=0)
+    mental_defense: Mapped[int] = mapped_column(Integer, default=0)
+    phys_damage_dice: Mapped[str] = mapped_column(String(8), default="1d8")
+
+    # для групповых механик (устрашение/переговоры, §12)
+    strength: Mapped[int] = mapped_column(Integer, default=0)
+    charisma: Mapped[int] = mapped_column(Integer, default=0)
+    wisdom: Mapped[int] = mapped_column(Integer, default=0)
+
+    __mapper_args__ = {"polymorphic_identity": CardType.CREATURE.value}
