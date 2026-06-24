@@ -131,6 +131,16 @@ def seed_all(session) -> dict:
             _stat_eff(EffectTarget.DEXTERITY, -1, SourceType.ITEM, ActivationSource.IN_INVENTORY, "Деревянный щит: DEX -1"),
         ],
     )
+    # Уникальный щит с теми же характеристиками, что у деревянного, но дающий
+    # пассивный навык «Бастион», пока лежит в инвентаре (grants_skill — ниже).
+    cat["improdor_defender"] = Item(
+        name="Защитник Импродора", price=7, is_unique=True,
+        description="Уникальный щит: те же характеристики, что у деревянного, плюс навык «Бастион».",
+        effects=[
+            _attr_eff(EffectTarget.PHYS_DEFENSE, 1, SourceType.ITEM, ActivationSource.IN_INVENTORY, "Защитник Импродора: +1 физ.защ."),
+            _stat_eff(EffectTarget.DEXTERITY, -1, SourceType.ITEM, ActivationSource.IN_INVENTORY, "Защитник Импродора: DEX -1"),
+        ],
+    )
     cat["vitality_amulet"] = Item(
         name="Амулет живучести", price=10,
         effects=[_attr_eff(EffectTarget.HP, 5, SourceType.ITEM, ActivationSource.IN_INVENTORY, "Амулет живучести: +5 HP")],
@@ -206,6 +216,21 @@ def seed_all(session) -> dict:
     # Инструменты дают эти навыки, пока находятся в инвентаре носителя.
     cat["inspiring_lute"].grants_skill = cat["skill_battle_song"]
     cat["war_drum"].grants_skill = cat["skill_war_cry"]
+    # Пассивный навык «Бастион»: держит строй (taunt). Несёт маркер-эффект BASTION;
+    # пока носитель жив, одиночные атаки врага обязаны целиться в него.
+    cat["skill_bastion"] = Skill(
+        name="Навык «Бастион»",
+        description="Пассивный навык: пока носитель жив, враг не может одиночной атакой "
+                    "выбрать другую цель — сначала нужно убить всех носителей Бастиона.",
+        is_passive=True, price=15,
+        effects=[
+            _attr_eff(EffectTarget.BASTION, 0, SourceType.ITEM, ActivationSource.IN_INVENTORY,
+                      "Бастион: держит строй (taunt)"),
+        ],
+    )
+    # «Защитник Импродора» даёт навык «Бастион», пока лежит в инвентаре.
+    cat["improdor_defender"].grants_skill = cat["skill_bastion"]
+
     # Пассивный навык: постоянные эффекты, всегда активны (для демонстрации/витрины).
     cat["skill_iron_skin"] = Skill(
         name="Навык «Железная кожа»",
@@ -227,8 +252,9 @@ def seed_all(session) -> dict:
     cat["andryusha"] = Character(
         name="Андрюша", description="Воин", is_player=True,
         base_strength=12, base_dexterity=5, base_wisdom=3, base_charisma=5, money=1,
+        # «Защитник Импродора» вместо деревянного щита: те же характеристики + навык «Бастион»
+        inventory=[cat["improdor_defender"]],
         equipped_weapon=cat["short_sword"], equipped_armor=cat["chainmail"],
-        inventory=[cat["wooden_shield"]],
     )
     cat["salli"] = Character(
         name="Салли", description="Следопыт / Лучник", is_player=True,

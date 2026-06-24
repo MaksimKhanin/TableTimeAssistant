@@ -61,6 +61,10 @@ class EffectTarget(str, Enum):
     PHYS_DAMAGE = "phys_damage"
     ALL_D20_ROLLS = "all_d20_rolls"
     ALL_ATTACK_ROLLS = "all_attack_rolls"
+    # маркер-состояние (не числовой модификатор): носитель «держит строй».
+    # Пока на стороне жив носитель Бастиона, одиночные атаки врага обязаны
+    # целиться в него — прочих выбрать нельзя (массовые способности обходят это).
+    BASTION = "bastion"
 
 
 class SourceType(str, Enum):

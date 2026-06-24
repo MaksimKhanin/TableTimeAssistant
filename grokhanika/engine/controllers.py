@@ -77,11 +77,12 @@ class SimpleAIController:
 
     @staticmethod
     def _pick_target(combat, actor: Combatant) -> Optional[Combatant]:
-        living = [t for t in combat.opponents_of(actor) if not t.is_dying]
-        if not living:
+        # «Бастион»: если у врага есть живые носители Бастиона — цель только среди них
+        candidates = combat.eligible_single_targets(actor)
+        if not candidates:
             return None
         # цель с наименьшим текущим HP — добиваем
-        return min(living, key=lambda t: t.current_hp)
+        return min(candidates, key=lambda t: t.current_hp)
 
     @staticmethod
     def _best_spell_carrier(actor: Combatant):

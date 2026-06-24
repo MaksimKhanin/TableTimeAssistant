@@ -94,6 +94,21 @@ def test_item_serializes_granted_skill(client):
     assert lute["fields"]["grants_skill"] == "Навык «Песнь храбрости»"
 
 
+def test_improdor_defender_grants_bastion(client):
+    # уникальный щит Андрюши даёт пассивный навык «Бастион»
+    items = client.get("/api/cards?category=items&filter=other").get_json()["items"]
+    shield = next(i for i in items if i["name"] == "Защитник Импродора")
+    assert shield["fields"]["grants_skill"] == "Навык «Бастион»"
+    assert shield["is_unique"] is True
+    # сам навык — пассивный, в категории навыков
+    skills = client.get("/api/cards?category=skills&filter=passive").get_json()["items"]
+    assert "Навык «Бастион»" in {s["name"] for s in skills}
+    # Андрюша носит уникальный щит вместо деревянного
+    heroes = client.get("/api/cards?category=heroes").get_json()["items"]
+    andr = next(h for h in heroes if h["name"] == "Андрюша")
+    assert "Защитник Импродора" in andr["fields"]["inventory"]
+
+
 def test_create_item_granting_skill(client):
     # узнаём id существующего навыка для ссылки
     skills = client.get("/api/cards?category=skills").get_json()["items"]

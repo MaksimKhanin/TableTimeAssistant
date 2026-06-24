@@ -120,6 +120,14 @@ class Encounter:
             combat.log.append(f"{actor.name}: цель недоступна — ход потрачен впустую")
             return
 
+        # «Бастион»: одиночную атаку нельзя нацелить мимо живых носителей Бастиона
+        if combat.bastion_blocks(actor, target):
+            combat.log.append(
+                f"{actor.name}: {target.name} под защитой Бастиона — "
+                f"сначала нужно убить носителей Бастиона"
+            )
+            return
+
         if kind is ActionKind.ATTACK_PHYSICAL:
             combat.physical_attack(actor, target)
         elif kind is ActionKind.CAST_SPELL:

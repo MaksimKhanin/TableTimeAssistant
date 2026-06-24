@@ -328,6 +328,16 @@ class Combatant:
         return not self.escaped and not self.dead
 
     @property
+    def has_bastion(self) -> bool:
+        """Активна ли у участника способность «Бастион» (taunt-защита строя).
+
+        Маркер несёт всегда-активный эффект навыка (см. enums.EffectTarget.BASTION),
+        поэтому свойство истинно, пока навык доступен (предмет в инвентаре и т.п.).
+        Учитывать «живость» носителя должен вызывающий код (мёртвый не держит строй).
+        """
+        return any(e.target == EffectTarget.BASTION.value for e in self.active_effects)
+
+    @property
     def can_act(self) -> bool:
         """Может ли действовать: жив, в бою и не Dying."""
         return self.in_combat and not self.is_dying

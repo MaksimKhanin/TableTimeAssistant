@@ -121,6 +121,26 @@ class Combat:
     def opponents_of(self, combatant: Combatant) -> list[Combatant]:
         return [c for c in self.combatants if c.side != combatant.side and c.in_combat]
 
+    # ───────── механика «Бастион» (taunt) ─────────
+
+    def eligible_single_targets(self, attacker: Combatant) -> list[Combatant]:
+        """Кого ``attacker`` вправе выбрать целью одиночной атаки.
+
+        Механика «Бастион»: пока на вражеской стороне есть живые (не Dying)
+        носители Бастиона, одиночная атака обязана целиться в них — прочих врагов
+        выбрать нельзя, пока всех «бастионов» не убьют. Массовые способности
+        (бафф/дебафф всех) эту механику не затрагивают.
+        """
+        living = [c for c in self.opponents_of(attacker) if not c.is_dying]
+        guards = [c for c in living if c.has_bastion]
+        return guards or living
+
+    def bastion_blocks(self, attacker: Combatant, target: Combatant) -> bool:
+        """Запрещает ли «Бастион» одиночную атаку ``attacker`` по ``target``."""
+        living = [c for c in self.opponents_of(attacker) if not c.is_dying]
+        guards = [c for c in living if c.has_bastion]
+        return bool(guards) and target not in guards
+
     def _ctx(self, actor: Combatant, target: Optional[Combatant] = None) -> AbilityContext:
         return AbilityContext(actor=actor, rng=self.rng, combat=self, target=target, log=self.log)
 
