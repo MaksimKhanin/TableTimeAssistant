@@ -14,15 +14,15 @@ from .conftest import ScriptedRandom
 
 
 def test_buff_allies_hits_whole_party_not_enemies(catalog):
-    salli = Combatant(catalog["salli"], "party")  # несёт «Лютню вдохновения»
+    enzo = Combatant(catalog["enzo"], "party")  # несёт «Лютню вдохновения»
     andr = Combatant(catalog["andryusha"], "party")
     goblin = Combatant(catalog["goblin"], "enemy")
-    combat = Combat([salli, andr, goblin], rng=ScriptedRandom())
+    combat = Combat([enzo, andr, goblin], rng=ScriptedRandom())
 
-    fired = combat.activate_ability(salli, "Песнь храбрости")
+    fired = combat.activate_ability(enzo, "Песнь храбрости")
     assert "Песнь храбрости" in fired
-    # +2 ко всем d20 у обоих сопартийцев
-    assert roll_modifier(salli.active_effects, attack=True) == 2
+    # бафф навешен и на кастующего (поверх его талисмана удачи), и на сопартийца
+    assert any("Воодушевление" in e.description for e in enzo.active_effects)
     assert roll_modifier(andr.active_effects, attack=True) == 2
     assert roll_modifier(andr.active_effects, attack=False) == 2
     # враг не затронут
@@ -46,27 +46,27 @@ def test_debuff_enemies_is_contested_per_target(catalog):
 
 
 def test_active_ability_is_once_per_combat(catalog):
-    salli = Combatant(catalog["salli"], "party")
+    enzo = Combatant(catalog["enzo"], "party")
     goblin = Combatant(catalog["goblin"], "enemy")
-    combat = Combat([salli, goblin], rng=ScriptedRandom())
+    combat = Combat([enzo, goblin], rng=ScriptedRandom())
 
-    assert combat.activate_ability(salli, "Песнь храбрости")
-    assert not combat.activate_ability(salli, "Песнь храбрости")  # повторно нельзя
+    assert combat.activate_ability(enzo, "Песнь храбрости")
+    assert not combat.activate_ability(enzo, "Песнь храбрости")  # повторно нельзя
 
 
 def test_ai_activates_group_ability_first(catalog):
-    salli = Combatant(catalog["salli"], "party")
+    enzo = Combatant(catalog["enzo"], "party")
     goblin = Combatant(catalog["goblin"], "enemy")
-    combat = Combat([salli, goblin], rng=ScriptedRandom())
+    combat = Combat([enzo, goblin], rng=ScriptedRandom())
 
-    action = SimpleAIController().decide(combat, salli)
+    action = SimpleAIController().decide(combat, enzo)
     assert action.kind is ActionKind.ACTIVATE_ABILITY
     assert action.ability_name == "Песнь храбрости"
 
 
 def test_buff_appears_in_encounter(catalog, session):
     rng = random.Random(11)
-    party = [Combatant(catalog[k], "party") for k in ("salli", "andryusha")]
+    party = [Combatant(catalog[k], "party") for k in ("enzo", "andryusha")]
     goblin = Combatant(catalog["goblin"], "enemy")
     combat = Combat(party + [goblin], rng=rng, session=session)
 

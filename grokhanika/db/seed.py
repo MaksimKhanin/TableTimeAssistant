@@ -94,6 +94,19 @@ def seed_all(session) -> dict:
         name="Арбалет", damage_dice="1d8", str_requirement=7, price=10, is_ranged=True,
         effects=[_stat_eff(EffectTarget.DEXTERITY, 2, SourceType.WEAPON, ActivationSource.EQUIPPED_WEAPON, "Арбалет: DEX +2")],
     )
+    # Уникальный лук: те же характеристики, что у обычного, но самонаводящиеся
+    # стрелы игнорируют Бастион — можно бить любую одиночную цель.
+    cat["homing_bow"] = Weapon(
+        name="Лук с самонаводящимися стрелами", damage_dice="1d8", dex_requirement=7,
+        price=8, is_ranged=True, is_unique=True,
+        description="Самонаводящиеся стрелы игнорируют Бастион и бьют любую цель.",
+        effects=[
+            _stat_eff(EffectTarget.DEXTERITY, 2, SourceType.WEAPON, ActivationSource.EQUIPPED_WEAPON,
+                      "Лук с самонаведением: DEX +2"),
+            _attr_eff(EffectTarget.IGNORE_BASTION, 0, SourceType.WEAPON, ActivationSource.EQUIPPED_WEAPON,
+                      "Самонаводящиеся стрелы: игнорируют Бастион"),
+        ],
+    )
 
     # ───────── броня (§14) ─────────
     cat["leather"] = Armor(name="Кожаная броня", phys_def_bonus=1, price=8)
@@ -247,7 +260,8 @@ def seed_all(session) -> dict:
         name="Энцо", description="Плут / Разбойник", is_player=True,
         base_strength=3, base_dexterity=12, base_wisdom=5, base_charisma=8, money=0,
         equipped_weapon=cat["dagger"], equipped_armor=cat["leather"],
-        inventory=[cat["small_heal"], cat["luck_talisman"]],
+        # лютня перешла к Энцо: пока она в его инвентаре, у него навык «Песнь храбрости»
+        inventory=[cat["small_heal"], cat["luck_talisman"], cat["inspiring_lute"]],
     )
     cat["andryusha"] = Character(
         name="Андрюша", description="Воин", is_player=True,
@@ -259,9 +273,9 @@ def seed_all(session) -> dict:
     cat["salli"] = Character(
         name="Салли", description="Следопыт / Лучник", is_player=True,
         base_strength=5, base_dexterity=10, base_wisdom=7, base_charisma=3, money=2,
-        equipped_weapon=cat["bow"], equipped_armor=cat["leather"],
-        # лютня — предмет: даёт навык «Песнь храбрости», пока лежит в инвентаре
-        inventory=[cat["small_heal"], cat["magic_arrows"], cat["inspiring_lute"]],
+        # уникальный лук с самонаведением: те же характеристики, но игнорирует Бастион
+        equipped_weapon=cat["homing_bow"], equipped_armor=cat["leather"],
+        inventory=[cat["small_heal"], cat["magic_arrows"]],
     )
     cat["arseldor"] = Character(
         name="Арсельдор", description="Маг", is_player=True,

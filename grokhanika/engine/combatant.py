@@ -338,6 +338,15 @@ class Combatant:
         return any(e.target == EffectTarget.BASTION.value for e in self.active_effects)
 
     @property
+    def ignores_bastion(self) -> bool:
+        """Игнорирует ли участник чужой Бастион при выборе одиночной цели.
+
+        Маркер несёт всегда-активный эффект (enums.EffectTarget.IGNORE_BASTION),
+        например, от уникального оружия с самонаводящимися снарядами.
+        """
+        return any(e.target == EffectTarget.IGNORE_BASTION.value for e in self.active_effects)
+
+    @property
     def can_act(self) -> bool:
         """Может ли действовать: жив, в бою и не Dying."""
         return self.in_combat and not self.is_dying

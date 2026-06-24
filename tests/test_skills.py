@@ -39,30 +39,30 @@ def test_skill_spell_not_consumed_after_cast(catalog):
 
 
 def test_item_grants_skill_while_in_inventory(catalog):
-    # Лютня — предмет (её можно продать). Пока она в инвентаре Салли,
-    # Салли владеет навыком «Песнь храбрости». Постоянных навыков у неё нет.
-    salli = Combatant(catalog["salli"], "party")
-    assert any(spec.name == "Песнь храбрости" for spec in salli.abilities)
-    assert any(it.name == "Лютня вдохновения" for it in salli.inventory)
-    assert catalog["salli"].skills == []
+    # Лютня — предмет (её можно продать). Пока она в инвентаре Энцо,
+    # Энцо владеет навыком «Песнь храбрости». Постоянных навыков у него нет.
+    enzo = Combatant(catalog["enzo"], "party")
+    assert any(spec.name == "Песнь храбрости" for spec in enzo.abilities)
+    assert any(it.name == "Лютня вдохновения" for it in enzo.inventory)
+    assert catalog["enzo"].skills == []
 
 
 def test_ability_from_granted_skill_buffs_party(catalog):
-    salli = Combatant(catalog["salli"], "party")
+    enzo = Combatant(catalog["enzo"], "party")
     andr = Combatant(catalog["andryusha"], "party")
     goblin = Combatant(catalog["goblin"], "enemy")
-    combat = Combat([salli, andr, goblin], rng=ScriptedRandom())
+    combat = Combat([enzo, andr, goblin], rng=ScriptedRandom())
 
-    combat.activate_ability(salli, "Песнь храбрости")  # навык от лютни
+    combat.activate_ability(enzo, "Песнь храбрости")  # навык от лютни
     assert any(e.target == EffectTarget.ALL_D20_ROLLS.value for e in andr.temporary_effects)
 
 
 def test_selling_item_removes_granted_skill(catalog, session):
-    salli_card = catalog["salli"]
-    salli_card.inventory.remove(catalog["inspiring_lute"])  # «продал» лютню
+    enzo_card = catalog["enzo"]
+    enzo_card.inventory.remove(catalog["inspiring_lute"])  # «продал» лютню
     session.flush()
-    salli = Combatant(salli_card, "party")
-    assert not any(spec.name == "Песнь храбрости" for spec in salli.abilities)
+    enzo = Combatant(enzo_card, "party")
+    assert not any(spec.name == "Песнь храбрости" for spec in enzo.abilities)
 
 
 # ───────────────────────── пассивный навык (эффекты всегда активны) ─────────────────────────

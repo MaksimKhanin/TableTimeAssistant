@@ -120,3 +120,64 @@ def test_encounter_blocks_attack_targeting_non_guard(catalog, session):
 
     assert enzo.current_hp == enzo_hp  # удар не прошёл — Бастион прикрыл
     assert any("под защитой Бастиона" in line for line in combat.log)
+
+
+# ───────────────────── игнор Бастиона (лук с самонаведением) ─────────────────────
+
+
+def test_homing_weapon_grants_ignore_marker(catalog):
+    salli = Combatant(catalog["salli"], "party")   # «Лук с самонаводящимися стрелами»
+    assert salli.ignores_bastion
+    assert not Combatant(catalog["andryusha"], "party").ignores_bastion
+    assert not Combatant(catalog["enzo"], "party").ignores_bastion
+
+
+def test_ally_homing_attacker_ignores_enemy_bastion(catalog):
+    # Союзник Салли (самонаводящийся лук) бьёт по вражескому строю кого угодно
+    salli = Combatant(catalog["salli"], "party")
+    guard = Combatant(catalog["andryusha"], "enemy")   # вражеский «бастион»
+    goblin = Combatant(catalog["goblin"], "enemy")
+    combat = Combat([salli, guard, goblin], rng=ScriptedRandom())
+
+    assert combat.bastion_blocks(salli, goblin) is False
+    assert goblin in combat.eligible_single_targets(salli)
+    # обычный союзник был бы скован строем — для контраста
+    enzo = Combatant(catalog["enzo"], "party")
+    combat2 = Combat([enzo, guard, goblin], rng=ScriptedRandom())
+    assert combat2.bastion_blocks(enzo, goblin) is True
+
+
+def test_enemy_homing_attacker_ignores_ally_bastion(catalog):
+    # Та же механика с другой стороны: враг с самонаводящимся луком бьёт мимо
+    # строя союзников (Салли помещена на сторону врага вместе с её луком).
+    homing_enemy = Combatant(catalog["salli"], "enemy")
+    andr = Combatant(catalog["andryusha"], "party")    # союзный «бастион»
+    enzo = Combatant(catalog["enzo"], "party")
+    combat = Combat([homing_enemy, andr, enzo], rng=ScriptedRandom())
+
+    assert combat.bastion_blocks(homing_enemy, enzo) is False
+    assert SimpleAIController()._pick_target(combat, homing_enemy) is not None
+    # обычный враг (гоблин) в том же раскладе скован Бастионом Андрюши
+    goblin = Combatant(catalog["goblin"], "enemy")
+    combat3 = Combat([goblin, andr, enzo], rng=ScriptedRandom())
+    assert combat3.bastion_blocks(goblin, enzo) is True
+
+
+def test_encounter_homing_attack_reaches_non_guard(catalog, session):
+    # Сквозная проверка: враг с самонаводящимся луком реально бьёт не-бастиона
+    homing_enemy = Combatant(catalog["salli"], "enemy")
+    andr = Combatant(catalog["andryusha"], "party")    # бастион
+    enzo = Combatant(catalog["enzo"], "party")
+    combat = Combat([homing_enemy, andr, enzo], rng=ScriptedRandom(ints=[20] * 10), session=session)
+    enzo_hp = enzo.current_hp
+
+    enc = Encounter(
+        combat,
+        {"enemy": ScriptedController([Action.attack(enzo.uid)]), "party": ScriptedController([])},
+        max_rounds=1,
+    )
+    enc.start()
+    enc.run_round()
+
+    assert enzo.current_hp < enzo_hp  # самонаводящаяся стрела достала не-бастиона
+    assert not any("под защитой Бастиона" in line for line in combat.log)

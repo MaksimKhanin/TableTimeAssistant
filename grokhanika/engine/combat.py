@@ -129,14 +129,19 @@ class Combat:
         Механика «Бастион»: пока на вражеской стороне есть живые (не Dying)
         носители Бастиона, одиночная атака обязана целиться в них — прочих врагов
         выбрать нельзя, пока всех «бастионов» не убьют. Массовые способности
-        (бафф/дебафф всех) эту механику не затрагивают.
+        (бафф/дебафф всех) эту механику не затрагивают. Атакующий с игнором
+        Бастиона (самонаводящиеся атаки) выбирает кого угодно — строй прозрачен.
         """
         living = [c for c in self.opponents_of(attacker) if not c.is_dying]
+        if attacker.ignores_bastion:
+            return living
         guards = [c for c in living if c.has_bastion]
         return guards or living
 
     def bastion_blocks(self, attacker: Combatant, target: Combatant) -> bool:
         """Запрещает ли «Бастион» одиночную атаку ``attacker`` по ``target``."""
+        if attacker.ignores_bastion:
+            return False  # самонаводящаяся атака бьёт мимо строя
         living = [c for c in self.opponents_of(attacker) if not c.is_dying]
         guards = [c for c in living if c.has_bastion]
         return bool(guards) and target not in guards

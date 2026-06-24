@@ -109,6 +109,24 @@ def test_improdor_defender_grants_bastion(client):
     assert "Защитник Импродора" in andr["fields"]["inventory"]
 
 
+def test_homing_bow_ignores_bastion_serialized(client):
+    weapons = client.get("/api/cards?category=items&filter=weapons").get_json()["items"]
+    bow = next(w for w in weapons if w["name"] == "Лук с самонаводящимися стрелами")
+    assert bow["fields"]["ignores_bastion"] is True
+    assert bow["is_unique"] is True
+    ordinary = next(w for w in weapons if w["name"] == "Лук")
+    assert ordinary["fields"]["ignores_bastion"] is False
+
+
+def test_lute_moved_to_enzo_and_salli_has_homing_bow(client):
+    heroes = client.get("/api/cards?category=heroes").get_json()["items"]
+    enzo = next(h for h in heroes if h["name"] == "Энцо")
+    salli = next(h for h in heroes if h["name"] == "Салли")
+    assert "Лютня вдохновения" in enzo["fields"]["inventory"]
+    assert "Лютня вдохновения" not in salli["fields"]["inventory"]
+    assert salli["fields"]["weapon"] == "Лук с самонаводящимися стрелами"
+
+
 def test_create_item_granting_skill(client):
     # узнаём id существующего навыка для ссылки
     skills = client.get("/api/cards?category=skills").get_json()["items"]

@@ -29,7 +29,7 @@ from ..db.models import (
     Weapon,
 )
 from ..engine.combatant import Combatant
-from ..enums import CardType
+from ..enums import CardType, EffectTarget
 
 # где лежит арт карточек (имя файла берётся из Card.image_id)
 _IMAGES_SUBDIR = os.path.join("images", "cards")
@@ -110,6 +110,10 @@ def _type_fields(card: Card) -> dict:
             "dex_requirement": card.dex_requirement,
             "is_ranged": card.is_ranged,
             "price": card.price,
+            # самонаводящееся оружие игнорирует чужой Бастион при выборе цели
+            "ignores_bastion": any(
+                e.target == EffectTarget.IGNORE_BASTION.value for e in card.effects
+            ),
         }
     if isinstance(card, Armor):
         return {
