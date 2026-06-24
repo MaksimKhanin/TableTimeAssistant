@@ -127,6 +127,15 @@ def _unique_field() -> FieldSpec:
     return FieldSpec("is_unique", "Уникальная", "bool", "Существует в мире в единственном экземпляре")
 
 
+def _grants_skill_field() -> FieldSpec:
+    return FieldSpec(
+        "grants_skill_id", "Даёт навык", "choice",
+        "Навык, который предмет даёт носителю, пока лежит в инвентаре (необязательно). "
+        "В отличие от навыка, предмет можно продать.",
+        choices_source="skills",
+    )
+
+
 # ───────────────────────── кросс-валидация персонажа ─────────────────────────
 
 
@@ -262,6 +271,7 @@ def _build_forms() -> dict[str, FormSpec]:
             FieldSpec("is_consumable", "Расходуемый", "bool", "Исчезает после применения", default=False),
             FieldSpec("heal_dice", "Лечение (кубики)", "dice",
                       "Для зелий — кубики хила NdM (например 2d4). Иначе пусто."),
+            _grants_skill_field(),
             _price_field(),
             _unique_field(),
             _image_field(),
@@ -303,11 +313,12 @@ def _build_forms() -> dict[str, FormSpec]:
         card_type=CardType.INSTRUMENT.value,
         label="Инструмент",
         icon="🪕",
-        note="Немагические групповые способности (лютня, барабан). Способности "
-             "пока добавляются через сид; здесь — базовая карточка.",
+        note="Предмет (лютня, барабан), который даёт навык, пока лежит в инвентаре. "
+             "Сам навык — отдельная сущность; выберите его в поле «Даёт навык».",
         fields=[
             _name_field(),
             _description_field(),
+            _grants_skill_field(),
             _price_field(),
             _unique_field(),
             _image_field(),

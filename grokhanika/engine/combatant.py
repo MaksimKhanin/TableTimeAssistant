@@ -150,29 +150,39 @@ class Combatant:
                 )
             )
             self._gather_abilities(item_card)
+            # предмет может давать навык, пока лежит в инвентаре (лютня → «Песнь храбрости»)
+            granted = getattr(item_card, "grants_skill", None)
+            if granted is not None:
+                self._snapshot_skill(granted)
 
-        # навыки — постоянные способности вне инвентаря (механика как у тома/лютни)
+        # постоянные навыки — куплены напрямую, вне инвентаря (механика как у тома/лютни)
         for skill_card in getattr(card, "skills", []):
-            self._gather_abilities(skill_card)  # активные/триггерные способности навыка
-            # пассивные эффекты навыка активны всегда (навык врождён, не «надет»)
-            self._skill_effects.extend(
-                RuntimeEffect.from_orm(e) for e in skill_card.effects
-            )
-            # навык-заклинание (как том): кастуемый источник, который не расходуется
-            if getattr(skill_card, "damage_dice", None) and getattr(skill_card, "difficulty", None):
-                self.skill_carriers.append(
-                    _ItemSnap(
-                        name=skill_card.name,
-                        card_id=skill_card.id,
-                        card_type=skill_card.card_type,
-                        is_consumable=False,
-                        heal_dice=getattr(skill_card, "heal_dice", None),
-                        effects=[],
-                        spell_name=getattr(skill_card, "spell_name", None),
-                        spell_damage_dice=getattr(skill_card, "damage_dice", None),
-                        spell_difficulty=getattr(skill_card, "difficulty", None),
-                    )
+            self._snapshot_skill(skill_card)
+
+    def _snapshot_skill(self, skill_card) -> None:
+        """Снять способности навыка (постоянного или даваемого предметом).
+
+        Внутри боя постоянный навык и навык от предмета ведут себя одинаково;
+        разница (можно ли продать) важна лишь вне боя.
+        """
+        self._gather_abilities(skill_card)  # активные/триггерные способности навыка
+        # эффекты навыка активны всегда, пока навык доступен
+        self._skill_effects.extend(RuntimeEffect.from_orm(e) for e in skill_card.effects)
+        # навык-заклинание (как том): кастуемый источник, который не расходуется
+        if getattr(skill_card, "damage_dice", None) and getattr(skill_card, "difficulty", None):
+            self.skill_carriers.append(
+                _ItemSnap(
+                    name=skill_card.name,
+                    card_id=skill_card.id,
+                    card_type=skill_card.card_type,
+                    is_consumable=False,
+                    heal_dice=getattr(skill_card, "heal_dice", None),
+                    effects=[],
+                    spell_name=getattr(skill_card, "spell_name", None),
+                    spell_damage_dice=getattr(skill_card, "damage_dice", None),
+                    spell_difficulty=getattr(skill_card, "difficulty", None),
                 )
+            )
 
     def _init_creature(self, card: Creature) -> None:
         self.base_strength = card.strength

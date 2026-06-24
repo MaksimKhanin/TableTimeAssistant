@@ -172,7 +172,12 @@ class Armor(Card):
 
 
 class Item(Card):
-    """Предмет инвентаря: зелье, талисман, щит и т.д. (манифест §4)."""
+    """Предмет инвентаря: зелье, талисман, щит и т.д. (манифест §4).
+
+    Предмет может **выдавать навык, пока лежит в инвентаре** (``grants_skill``):
+    в отличие от навыка, такой предмет покупается и продаётся, занимает слот, и
+    при продаже носитель теряет даваемую им способность (см. ``Skill``).
+    """
 
     __tablename__ = "items"
 
@@ -181,6 +186,9 @@ class Item(Card):
     is_consumable: Mapped[bool] = mapped_column(Boolean, default=False)
     # для зелий лечения — кубики хила (манифест §14)
     heal_dice: Mapped[Optional[str]] = mapped_column(String(8), default=None)
+    # навык, который предмет даёт, пока находится в инвентаре
+    grants_skill_id: Mapped[Optional[int]] = mapped_column(ForeignKey("skills.id"), default=None)
+    grants_skill: Mapped[Optional["Skill"]] = relationship(foreign_keys=[grants_skill_id])
 
     __mapper_args__ = {"polymorphic_identity": CardType.ITEM.value}
 
@@ -234,12 +242,19 @@ class Scroll(Card, _SpellCarrierMixin):
 
 
 class Instrument(Card):
-    """Инструмент — немагические способности (лютня, барабан). Задел на будущее."""
+    """Инструмент (лютня, барабан) — предмет, дающий навык, пока в инвентаре.
+
+    Инструмент покупается и продаётся и **даёт навык** (``grants_skill``), пока
+    лежит в инвентаре носителя. Сам навык (например, «Песнь храбрости») —
+    отдельная сущность ``Skill``; инструмент лишь предоставляет к нему доступ.
+    """
 
     __tablename__ = "instruments"
 
     id: Mapped[int] = mapped_column(ForeignKey("cards.id"), primary_key=True)
     price: Mapped[Optional[int]] = mapped_column(Integer, default=None)
+    grants_skill_id: Mapped[Optional[int]] = mapped_column(ForeignKey("skills.id"), default=None)
+    grants_skill: Mapped[Optional["Skill"]] = relationship(foreign_keys=[grants_skill_id])
 
     __mapper_args__ = {"polymorphic_identity": CardType.INSTRUMENT.value}
 

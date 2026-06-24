@@ -136,34 +136,15 @@ def seed_all(session) -> dict:
         effects=[_attr_eff(EffectTarget.HP, 5, SourceType.ITEM, ActivationSource.IN_INVENTORY, "Амулет живучести: +5 HP")],
     )
 
-    # ───────── инструменты: ментальные способности (§6, §10) ─────────
+    # ───────── инструменты: предметы, дающие навык, пока в инвентаре (§6, §10) ─────────
+    # Сам навык — отдельная сущность Skill (см. ниже); инструмент лишь даёт к нему
+    # доступ, пока лежит в инвентаре. Связь grants_skill проставляется после создания
+    # навыков. Инструмент покупается и продаётся (в отличие от навыка).
     cat["inspiring_lute"] = Instrument(
-        name="Лютня вдохновения", description="Воодушевляет всю партию", price=12,
-        abilities=[
-            _buff_ability(
-                "Песнь храбрости", "Бафф всех сопартийцев: +2 ко всем d20 на 3 раунда",
-                {
-                    "target_type": EffectTargetType.ATTR.value,
-                    "target": EffectTarget.ALL_D20_ROLLS.value,
-                    "modifier": 2, "duration": 3, "source_type": SourceType.ITEM.value,
-                    "description": "Воодушевление: +2 ко всем d20",
-                },
-            )
-        ],
+        name="Лютня вдохновения", description="Даёт навык «Песнь храбрости», пока в инвентаре", price=12,
     )
     cat["war_drum"] = Instrument(
-        name="Барабан войны", description="Деморализует врагов", price=12,
-        abilities=[
-            _debuff_ability(
-                "Гром деморализации", "Дебафф всех врагов: -2 к броскам атаки на 3 раунда",
-                {
-                    "target_type": EffectTargetType.ATTR.value,
-                    "target": EffectTarget.ALL_ATTACK_ROLLS.value,
-                    "modifier": -2, "duration": 3, "source_type": SourceType.ITEM.value,
-                    "description": "Деморализация: -2 к атакам",
-                },
-            )
-        ],
+        name="Барабан войны", description="Даёт навык «Гром деморализации», пока в инвентаре", price=12,
     )
 
     # ───────── тома магии (§14) ─────────
@@ -187,7 +168,8 @@ def seed_all(session) -> dict:
     # Том «Магические стрелы» при прочтении даёт этот навык (купил → прочитал → выучил).
     cat["tome_arrows"].teaches_skill = cat["skill_magic_arrows"]
 
-    # Активный навык-способность (как лютня): баффает всю партию.
+    # Активный навык-способность (как у лютни): баффает всю партию. Этот навык
+    # даёт лютня, пока лежит в инвентаре (grants_skill ниже).
     cat["skill_battle_song"] = Skill(
         name="Навык «Песнь храбрости»",
         description="Активный навык: на своём ходу воодушевляет всю партию.",
@@ -204,6 +186,26 @@ def seed_all(session) -> dict:
             )
         ],
     )
+    # Навык барабана: дебаффает всех врагов. Даёт барабан войны, пока в инвентаре.
+    cat["skill_war_cry"] = Skill(
+        name="Навык «Гром деморализации»",
+        description="Активный навык: на своём ходу деморализует всех врагов.",
+        is_passive=False, price=12,
+        abilities=[
+            _debuff_ability(
+                "Гром деморализации", "Дебафф всех врагов: -2 к броскам атаки на 3 раунда",
+                {
+                    "target_type": EffectTargetType.ATTR.value,
+                    "target": EffectTarget.ALL_ATTACK_ROLLS.value,
+                    "modifier": -2, "duration": 3, "source_type": SourceType.ITEM.value,
+                    "description": "Деморализация: -2 к атакам",
+                },
+            )
+        ],
+    )
+    # Инструменты дают эти навыки, пока находятся в инвентаре носителя.
+    cat["inspiring_lute"].grants_skill = cat["skill_battle_song"]
+    cat["war_drum"].grants_skill = cat["skill_war_cry"]
     # Пассивный навык: постоянные эффекты, всегда активны (для демонстрации/витрины).
     cat["skill_iron_skin"] = Skill(
         name="Навык «Железная кожа»",
@@ -232,9 +234,8 @@ def seed_all(session) -> dict:
         name="Салли", description="Следопыт / Лучник", is_player=True,
         base_strength=5, base_dexterity=10, base_wisdom=7, base_charisma=3, money=2,
         equipped_weapon=cat["bow"], equipped_armor=cat["leather"],
-        inventory=[cat["small_heal"], cat["magic_arrows"]],
-        # «Песнь храбрости» теперь навык — не занимает слот инвентаря
-        skills=[cat["skill_battle_song"]],
+        # лютня — предмет: даёт навык «Песнь храбрости», пока лежит в инвентаре
+        inventory=[cat["small_heal"], cat["magic_arrows"], cat["inspiring_lute"]],
     )
     cat["arseldor"] = Character(
         name="Арсельдор", description="Маг", is_player=True,

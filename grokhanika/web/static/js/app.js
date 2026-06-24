@@ -187,6 +187,7 @@ function cardChips(card) {
   if (f.damage_dice) chips.push(chip("Урон", f.damage_dice));
   if (f.phys_def_bonus != null) chips.push(chip("Защ", `+${f.phys_def_bonus}`));
   if (f.heal_dice) chips.push(chip("Хил", f.heal_dice));
+  if (f.grants_skill) chips.push(chip("Даёт навык", esc(f.grants_skill)));
   if (f.price != null) chips.push(chip("Цена", f.price));
   return chips.join("");
 }
@@ -225,7 +226,7 @@ function showDetail(card) {
     phys_def_bonus: "Бонус физзащиты", is_consumable: "Расходуемый", heal_dice: "Лечение",
     spell_name: "Заклинание", difficulty: "Сложность", attack_stat: "Хар-ка атаки",
     is_passive: "Пассивный", non_sellable: "Нельзя продать", in_inventory: "Занимает слот инвентаря",
-    skills: "Навыки",
+    skills: "Навыки", grants_skill: "Даёт навык",
   };
   const fmt = (v) => v === true ? "да" : v === false ? "нет" : Array.isArray(v) ? (v.join(", ") || "—") : (v ?? "—");
   Object.entries(f).forEach(([k, v]) => {

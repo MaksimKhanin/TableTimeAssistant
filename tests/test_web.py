@@ -87,6 +87,25 @@ def test_hero_serialization_includes_skills(client):
     assert "Навык «Магические стрелы»" in arseldor["fields"]["skills"]
 
 
+def test_item_serializes_granted_skill(client):
+    # Лютня — предмет в категории «Предметы», который даёт навык, пока в инвентаре
+    items = client.get("/api/cards?category=items&filter=other").get_json()["items"]
+    lute = next(i for i in items if i["name"] == "Лютня вдохновения")
+    assert lute["fields"]["grants_skill"] == "Навык «Песнь храбрости»"
+
+
+def test_create_item_granting_skill(client):
+    # узнаём id существующего навыка для ссылки
+    skills = client.get("/api/cards?category=skills").get_json()["items"]
+    skill_id = next(s["id"] for s in skills if s["name"] == "Навык «Песнь храбрости»")
+    r = client.post("/api/cards", json={
+        "card_type": "instrument", "name": "Флейта вдохновения",
+        "grants_skill_id": skill_id, "price": 10,
+    })
+    assert r.status_code == 201
+    assert r.get_json()["fields"]["grants_skill"] == "Навык «Песнь храбрости»"
+
+
 def test_create_casting_skill(client):
     r = client.post("/api/cards", json={
         "card_type": "skill", "name": "Навык «Ледяная игла»",

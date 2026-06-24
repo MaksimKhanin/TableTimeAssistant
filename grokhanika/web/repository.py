@@ -44,6 +44,7 @@ _MODELS: dict[str, type[Card]] = {
 _REFERENCE_FIELDS: dict[str, type[Card]] = {
     "equipped_weapon_id": Weapon,
     "equipped_armor_id": Armor,
+    "grants_skill_id": Skill,
 }
 
 
@@ -136,7 +137,11 @@ def get_card(session: Session, card_id: int) -> Optional[dict]:
 
 def choices_for(session: Session, source: str) -> list[dict]:
     """Варианты для choice-поля формы (например, существующее оружие/броня)."""
-    type_map = {"weapons": CardType.WEAPON.value, "armor": CardType.ARMOR.value}
+    type_map = {
+        "weapons": CardType.WEAPON.value,
+        "armor": CardType.ARMOR.value,
+        "skills": CardType.SKILL.value,
+    }
     card_type = type_map.get(source)
     if card_type is None:
         return []

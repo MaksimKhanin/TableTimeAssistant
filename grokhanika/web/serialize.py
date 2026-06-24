@@ -123,6 +123,7 @@ def _type_fields(card: Card) -> dict:
             "is_consumable": card.is_consumable,
             "heal_dice": card.heal_dice,
             "price": card.price,
+            "grants_skill": card.grants_skill.name if card.grants_skill else None,
         }
     if isinstance(card, (SpellBook, Scroll)):
         return {
@@ -147,7 +148,10 @@ def _type_fields(card: Card) -> dict:
             "in_inventory": False,  # навык не занимает слот инвентаря
         }
     if isinstance(card, Instrument):
-        return {"price": card.price}
+        return {
+            "price": card.price,
+            "grants_skill": card.grants_skill.name if card.grants_skill else None,
+        }
     return {}
 
 
