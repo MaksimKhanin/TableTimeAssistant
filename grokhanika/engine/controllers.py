@@ -85,5 +85,6 @@ class SimpleAIController:
 
     @staticmethod
     def _best_spell_carrier(actor: Combatant):
-        carriers = [it for it in actor.inventory if it.is_spell_carrier]
+        # источники заклинаний: тома/свитки в инвентаре + навыки-заклинания
+        carriers = actor.spell_carriers
         return carriers[0] if carriers else None

@@ -19,6 +19,7 @@ class CardType(str, Enum):
     SPELLBOOK = "spellbook"
     SCROLL = "scroll"
     INSTRUMENT = "instrument"
+    SKILL = "skill"
 
 
 class Stat(str, Enum):

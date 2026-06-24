@@ -22,6 +22,7 @@ from .models import (
     Effect,
     Instrument,
     Item,
+    Skill,
     SpellBook,
     Weapon,
 )
@@ -175,6 +176,45 @@ def seed_all(session) -> dict:
         damage_dice="4d4", difficulty=10, attack_stat="wisdom", price=7,
     )
 
+    # ───────── навыки (механика тома/лютни, но вне инвентаря, не продаются) ─────────
+    # Активный навык-заклинание (как том): кастует залп магических стрел.
+    cat["skill_magic_arrows"] = Skill(
+        name="Навык «Магические стрелы»",
+        description="Выучен из тома. Постоянно: персонаж кастует залп магических стрел.",
+        is_passive=False, price=12,
+        spell_name="Магические стрелы", damage_dice="4d4", difficulty=10, attack_stat="wisdom",
+    )
+    # Том «Магические стрелы» при прочтении даёт этот навык (купил → прочитал → выучил).
+    cat["tome_arrows"].teaches_skill = cat["skill_magic_arrows"]
+
+    # Активный навык-способность (как лютня): баффает всю партию.
+    cat["skill_battle_song"] = Skill(
+        name="Навык «Песнь храбрости»",
+        description="Активный навык: на своём ходу воодушевляет всю партию.",
+        is_passive=False, price=12,
+        abilities=[
+            _buff_ability(
+                "Песнь храбрости", "Бафф всех сопартийцев: +2 ко всем d20 на 3 раунда",
+                {
+                    "target_type": EffectTargetType.ATTR.value,
+                    "target": EffectTarget.ALL_D20_ROLLS.value,
+                    "modifier": 2, "duration": 3, "source_type": SourceType.ITEM.value,
+                    "description": "Воодушевление: +2 ко всем d20",
+                },
+            )
+        ],
+    )
+    # Пассивный навык: постоянные эффекты, всегда активны (для демонстрации/витрины).
+    cat["skill_iron_skin"] = Skill(
+        name="Навык «Железная кожа»",
+        description="Пассивный навык: постоянно +2 к физической защите.",
+        is_passive=True, price=10,
+        effects=[
+            _attr_eff(EffectTarget.PHYS_DEFENSE, 2, SourceType.ITEM, ActivationSource.IN_INVENTORY,
+                      "Железная кожа: +2 к физзащите (пассивный навык)"),
+        ],
+    )
+
     # ───────── игровые персонажи (§15) ─────────
     cat["enzo"] = Character(
         name="Энцо", description="Плут / Разбойник", is_player=True,
@@ -192,13 +232,17 @@ def seed_all(session) -> dict:
         name="Салли", description="Следопыт / Лучник", is_player=True,
         base_strength=5, base_dexterity=10, base_wisdom=7, base_charisma=3, money=2,
         equipped_weapon=cat["bow"], equipped_armor=cat["leather"],
-        inventory=[cat["small_heal"], cat["magic_arrows"], cat["inspiring_lute"]],
+        inventory=[cat["small_heal"], cat["magic_arrows"]],
+        # «Песнь храбрости» теперь навык — не занимает слот инвентаря
+        skills=[cat["skill_battle_song"]],
     )
     cat["arseldor"] = Character(
         name="Арсельдор", description="Маг", is_player=True,
         base_strength=3, base_dexterity=3, base_wisdom=14, base_charisma=5, money=0,
         equipped_weapon=cat["staff"], equipped_armor=cat["mage_robes"],
-        inventory=[cat["tome_arrows"], cat["vitality_amulet"]],
+        inventory=[cat["vitality_amulet"]],
+        # прочитал том «Магические стрелы» → выучил навык (том больше не в инвентаре)
+        skills=[cat["skill_magic_arrows"]],
     )
 
     # ───────── демо-существа с уникальными способностями ─────────

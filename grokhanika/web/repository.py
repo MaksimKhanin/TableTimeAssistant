@@ -19,6 +19,7 @@ from ..db.models import (
     Instrument,
     Item,
     Scroll,
+    Skill,
     SpellBook,
     Weapon,
 )
@@ -36,6 +37,7 @@ _MODELS: dict[str, type[Card]] = {
     CardType.SPELLBOOK.value: SpellBook,
     CardType.SCROLL.value: Scroll,
     CardType.INSTRUMENT.value: Instrument,
+    CardType.SKILL.value: Skill,
 }
 
 # поля-ссылки на другую карточку: имя поля → ожидаемая модель цели
@@ -85,10 +87,15 @@ def list_category(
 
     # какие типы карточек реально грузим (с учётом фильтра)
     types = list(category.card_types)
+    # фильтр навыков (активные/пассивные) — не по типу карточки, отбираем после загрузки
+    skill_passive_filter: Optional[bool] = None
     if filter_value and filter_value != "all":
-        chosen = next((f for f in category.filters if f["value"] == filter_value), None)
-        if chosen is not None:
-            types = chosen.get("card_types", [filter_value])
+        if category_key == "skills" and filter_value in ("active", "passive"):
+            skill_passive_filter = filter_value == "passive"
+        else:
+            chosen = next((f for f in category.filters if f["value"] == filter_value), None)
+            if chosen is not None:
+                types = chosen.get("card_types", [filter_value])
 
     cards = (
         session.execute(select(Card).where(Card.card_type.in_(types)))
@@ -101,6 +108,8 @@ def list_category(
         cards = [c for c in cards if isinstance(c, Character) and c.is_player]
     elif category_key == "npc":
         cards = [c for c in cards if not (isinstance(c, Character) and c.is_player)]
+    elif skill_passive_filter is not None:
+        cards = [c for c in cards if isinstance(c, Skill) and c.is_passive == skill_passive_filter]
 
     reverse = order == "desc"
     cards.sort(key=lambda c: _sort_key(c, sort), reverse=reverse)

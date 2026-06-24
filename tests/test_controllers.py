@@ -24,13 +24,15 @@ def test_ai_targets_lowest_hp_enemy(catalog):
 
 
 def test_ai_casts_when_caster_and_has_carrier(catalog):
-    arseldor = Combatant(catalog["arseldor"], "party")  # маг.атака 9 >= физ 1, есть том
+    # маг.атака 9 >= физ 1; «Магические стрелы» теперь навык, а не том в инвентаре
+    arseldor = Combatant(catalog["arseldor"], "party")
     goblin = Combatant(catalog["goblin"], "enemy")
     combat = Combat([arseldor, goblin], rng=ScriptedRandom())
 
     action = SimpleAIController().decide(combat, arseldor)
     assert action.kind is ActionKind.CAST_SPELL
-    assert action.carrier_card_id == catalog["tome_arrows"].id
+    # ИИ кастует из навыка-заклинания (источник вне инвентаря)
+    assert action.carrier_card_id == catalog["skill_magic_arrows"].id
 
 
 def test_ai_drinks_potion_when_low(catalog):

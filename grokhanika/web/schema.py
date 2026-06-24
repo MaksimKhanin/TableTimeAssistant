@@ -314,6 +314,34 @@ def _build_forms() -> dict[str, FormSpec]:
         ],
     )
 
+    forms[CardType.SKILL.value] = FormSpec(
+        card_type=CardType.SKILL.value,
+        label="Навык",
+        icon="🎓",
+        note="Навык покупается за деньги, остаётся с персонажем навсегда, его "
+             "нельзя продать и он НЕ занимает слот инвентаря. Механика как у тома: "
+             "заполните поля заклинания для активного навыка-каста. Навыки-способности "
+             "(бафф/дебафф) пока задаются через сид.",
+        fields=[
+            _name_field(),
+            _description_field(),
+            FieldSpec("is_passive", "Пассивный", "bool",
+                      "Пассивный навык (постоянные эффекты) vs активный (каст/активация).",
+                      default=False),
+            _price_field("Стоимость покупки навыка (целое ≥ 0)"),
+            FieldSpec("spell_name", "Заклинание", "str",
+                      "Название заклинания навыка (для активного навыка-каста)."),
+            FieldSpec("damage_dice", "Урон (кубики)", "dice",
+                      "Кубики урона заклинания NdM, например 4d4. Пусто — навык не кастует."),
+            FieldSpec("heal_dice", "Лечение (кубики)", "dice", "Если навык лечит — кубики NdM."),
+            FieldSpec("difficulty", "Сложность активации", "int",
+                      "Порог броска активации заклинания (нужен для каста).", min=1),
+            FieldSpec("attack_stat", "Характеристика атаки", "choice",
+                      "Какой характеристикой кастует навык.", default="wisdom", choices=_STAT_CHOICES),
+            _image_field(),
+        ],
+    )
+
     return forms
 
 
@@ -402,6 +430,22 @@ CATEGORIES: list[Category] = [
             CardType.WEAPON.value, CardType.ARMOR.value, CardType.ITEM.value,
             CardType.SPELLBOOK.value, CardType.SCROLL.value, CardType.INSTRUMENT.value,
         ],
+    ),
+    Category(
+        key="skills",
+        label="Навыки",
+        icon="🎓",
+        card_types=[CardType.SKILL.value],
+        filters=[
+            {"value": "all", "label": "Все"},
+            {"value": "active", "label": "Активные"},
+            {"value": "passive", "label": "Пассивные"},
+        ],
+        sorts=[
+            {"value": "name", "label": "По имени"},
+            {"value": "price", "label": "По стоимости"},
+        ],
+        creatable=[CardType.SKILL.value],
     ),
     Category(
         key="abilities",

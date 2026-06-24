@@ -24,6 +24,7 @@ from ..db.models import (
     Instrument,
     Item,
     Scroll,
+    Skill,
     SpellBook,
     Weapon,
 )
@@ -87,6 +88,7 @@ def _type_fields(card: Card) -> dict:
             "weapon": card.equipped_weapon.name if card.equipped_weapon else None,
             "armor": card.equipped_armor.name if card.equipped_armor else None,
             "inventory": [it.name for it in card.inventory],
+            "skills": [s.name for s in card.skills],
         }
     if isinstance(card, Creature):
         return {
@@ -132,6 +134,18 @@ def _type_fields(card: Card) -> dict:
             "is_consumable": card.is_consumable,
             "price": card.price,
         }
+    if isinstance(card, Skill):
+        return {
+            "is_passive": card.is_passive,
+            "spell_name": card.spell_name or None,
+            "damage_dice": card.damage_dice,
+            "heal_dice": card.heal_dice,
+            "difficulty": card.difficulty,
+            "attack_stat": card.attack_stat if card.damage_dice else None,
+            "price": card.price,
+            "non_sellable": True,  # навык нельзя продать
+            "in_inventory": False,  # навык не занимает слот инвентаря
+        }
     if isinstance(card, Instrument):
         return {"price": card.price}
     return {}
@@ -149,6 +163,7 @@ TYPE_LABELS = {
     CardType.SPELLBOOK.value: "Том магии",
     CardType.SCROLL.value: "Свиток",
     CardType.INSTRUMENT.value: "Инструмент",
+    CardType.SKILL.value: "Навык",
 }
 
 

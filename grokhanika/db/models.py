@@ -197,11 +197,20 @@ class _SpellCarrierMixin:
 
 
 class SpellBook(Card, _SpellCarrierMixin):
-    """Том магии: 1 заклинание, многоразово (манифест §6)."""
+    """Том магии: 1 заклинание, многоразово (манифест §6).
+
+    Том покупается и носится в инвентаре, но его можно «прочитать» и получить
+    постоянный навык (``teaches_skill``): купил → прочитал → выучил навык, том
+    расходуется (см. ``rules.skills.learn_from_tome``).
+    """
 
     __tablename__ = "spellbooks"
 
     id: Mapped[int] = mapped_column(ForeignKey("cards.id"), primary_key=True)
+    teaches_skill_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("skills.id"), default=None
+    )
+    teaches_skill: Mapped[Optional["Skill"]] = relationship(foreign_keys=[teaches_skill_id])
 
     __mapper_args__ = {"polymorphic_identity": CardType.SPELLBOOK.value}
 
@@ -235,6 +244,42 @@ class Instrument(Card):
     __mapper_args__ = {"polymorphic_identity": CardType.INSTRUMENT.value}
 
 
+# ───────────────────────── навыки ─────────────────────────
+
+
+class Skill(Card, _SpellCarrierMixin):
+    """Навык — выученная постоянная способность персонажа.
+
+    Механика **идентична** тому магии и инструменту (лютне): навык может кастовать
+    заклинание (поля ``_SpellCarrierMixin``, как у тома) и/или нести способности
+    ``Ability`` и пассивные ``Effect`` (как лютня — через общий ``owner_card_id``,
+    т.к. навык тоже карточка).
+
+    Отличия навыка от предмета (манифест: экономика навыков):
+
+    * **не занимает слот инвентаря** — персонаж связан с навыками отдельной
+      таблицей ``character_skills``, а не ``character_inventory``;
+    * **нельзя продать и нельзя потерять** — навык остаётся с персонажем навсегда
+      (не расходуется в бою, в отличие от свитка);
+    * **покупается за деньги** (``price``) — например, читая том (см.
+      ``SpellBook.teaches_skill``), персонаж получает навык.
+
+    ``is_passive`` различает пассивный навык (постоянные эффекты/триггеры) и
+    активный (кастует заклинание или активирует способность на своём ходу).
+    """
+
+    __tablename__ = "skills"
+
+    id: Mapped[int] = mapped_column(ForeignKey("cards.id"), primary_key=True)
+    is_passive: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    __mapper_args__ = {"polymorphic_identity": CardType.SKILL.value}
+
+    @property
+    def is_consumable(self) -> bool:
+        return False  # навык никогда не расходуется
+
+
 # ───────────────────────── персонажи и существа ─────────────────────────
 
 
@@ -245,6 +290,16 @@ character_inventory = Table(
     Column("card_id", ForeignKey("cards.id"), primary_key=True),
     Column("quantity", Integer, default=1, nullable=False),
     UniqueConstraint("character_id", "card_id", name="uq_character_card"),
+)
+
+# Навыки персонажа — отдельная связь, *не* инвентарь: навык не занимает слот,
+# не расходуется и не продаётся (см. ``Skill``).
+character_skills = Table(
+    "character_skills",
+    Base.metadata,
+    Column("character_id", ForeignKey("characters.id"), primary_key=True),
+    Column("skill_id", ForeignKey("skills.id"), primary_key=True),
+    UniqueConstraint("character_id", "skill_id", name="uq_character_skill"),
 )
 
 
@@ -284,6 +339,12 @@ class Character(Card):
         secondary=character_inventory,
         primaryjoin="Character.id == character_inventory.c.character_id",
         secondaryjoin="Card.id == character_inventory.c.card_id",
+    )
+    # выученные навыки — постоянные, вне инвентаря (см. Skill)
+    skills: Mapped[list["Skill"]] = relationship(
+        secondary=character_skills,
+        primaryjoin="Character.id == character_skills.c.character_id",
+        secondaryjoin="Skill.id == character_skills.c.skill_id",
     )
 
     __mapper_args__ = {

@@ -82,6 +82,9 @@ class Combatant:
         self.weapon: Optional[_WeaponSnap] = None
         self.armor_phys_def_bonus: int = 0
         self.inventory: list[_ItemSnap] = []
+        # навыки: кастующие источники (как тома) и постоянные эффекты — вне инвентаря
+        self.skill_carriers: list[_ItemSnap] = []
+        self._skill_effects: list[RuntimeEffect] = []
         self._weapon_effects: list[RuntimeEffect] = []
         self._armor_effects: list[RuntimeEffect] = []
 
@@ -148,6 +151,29 @@ class Combatant:
             )
             self._gather_abilities(item_card)
 
+        # навыки — постоянные способности вне инвентаря (механика как у тома/лютни)
+        for skill_card in getattr(card, "skills", []):
+            self._gather_abilities(skill_card)  # активные/триггерные способности навыка
+            # пассивные эффекты навыка активны всегда (навык врождён, не «надет»)
+            self._skill_effects.extend(
+                RuntimeEffect.from_orm(e) for e in skill_card.effects
+            )
+            # навык-заклинание (как том): кастуемый источник, который не расходуется
+            if getattr(skill_card, "damage_dice", None) and getattr(skill_card, "difficulty", None):
+                self.skill_carriers.append(
+                    _ItemSnap(
+                        name=skill_card.name,
+                        card_id=skill_card.id,
+                        card_type=skill_card.card_type,
+                        is_consumable=False,
+                        heal_dice=getattr(skill_card, "heal_dice", None),
+                        effects=[],
+                        spell_name=getattr(skill_card, "spell_name", None),
+                        spell_damage_dice=getattr(skill_card, "damage_dice", None),
+                        spell_difficulty=getattr(skill_card, "difficulty", None),
+                    )
+                )
+
     def _init_creature(self, card: Creature) -> None:
         self.base_strength = card.strength
         self.base_dexterity = card.dexterity
@@ -187,8 +213,15 @@ class Combatant:
                     and weapon_ranged
                 ):
                     effects.append(e)
+        # эффекты навыков активны всегда (не зависят от activation_source)
+        effects.extend(self._skill_effects)
         effects.extend(self.temporary_effects)
         self.active_effects = effects
+
+    @property
+    def spell_carriers(self) -> list["_ItemSnap"]:
+        """Все источники заклинаний: тома/свитки в инвентаре + навыки-заклинания."""
+        return [it for it in self.inventory if it.is_spell_carrier] + list(self.skill_carriers)
 
     def add_temporary_effect(self, effect: RuntimeEffect) -> None:
         add_effect(self.temporary_effects, effect)

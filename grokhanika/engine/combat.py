@@ -246,7 +246,7 @@ class Combat:
         carrier = next(
             (
                 it
-                for it in caster.inventory
+                for it in caster.spell_carriers
                 if it.card_id == carrier_card_id and it.is_spell_carrier
             ),
             None,
@@ -261,9 +261,10 @@ class Combat:
             damage_dice=carrier.spell_damage_dice,
             difficulty=carrier.spell_difficulty,
         )
+        # навык-заклинание не расходуется; расходуется лишь одноразовый предмет (свиток)
         if carrier.is_consumable:
             carrier.quantity -= 1
-            if carrier.quantity <= 0:
+            if carrier.quantity <= 0 and carrier in caster.inventory:
                 caster.inventory.remove(carrier)
             caster.recompute_active_effects()
             self.log.append(f"{caster.name}: свиток «{carrier.name}» израсходован")

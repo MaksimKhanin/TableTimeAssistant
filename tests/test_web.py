@@ -24,7 +24,7 @@ def client():
 
 def test_categories(client):
     cats = client.get("/api/categories").get_json()
-    assert [c["key"] for c in cats] == ["heroes", "npc", "items", "abilities"]
+    assert [c["key"] for c in cats] == ["heroes", "npc", "items", "skills", "abilities"]
 
 
 def test_heroes_are_player_characters(client):
@@ -55,6 +55,58 @@ def test_items_filter_and_sort_by_price(client):
 
     other = client.get("/api/cards?category=items&filter=other").get_json()["items"]
     assert all(w["card_type"] in {"item", "spellbook", "scroll", "instrument"} for w in other)
+
+
+def test_skills_category_lists_seeded_skills(client):
+    skills = client.get("/api/cards?category=skills").get_json()["items"]
+    names = {s["name"] for s in skills}
+    assert "Навык «Магические стрелы»" in names
+    assert "Навык «Песнь храбрости»" in names
+    # все карточки категории — навыки, помеченные как непродаваемые и вне инвентаря
+    for s in skills:
+        assert s["card_type"] == "skill"
+        assert s["fields"]["non_sellable"] is True
+        assert s["fields"]["in_inventory"] is False
+
+
+def test_skills_filter_active_passive(client):
+    passive = client.get("/api/cards?category=skills&filter=passive").get_json()["items"]
+    assert passive and all(s["fields"]["is_passive"] for s in passive)
+    active = client.get("/api/cards?category=skills&filter=active").get_json()["items"]
+    assert active and all(not s["fields"]["is_passive"] for s in active)
+
+
+def test_skills_not_in_items_category(client):
+    items = client.get("/api/cards?category=items").get_json()["items"]
+    assert all(it["card_type"] != "skill" for it in items)
+
+
+def test_hero_serialization_includes_skills(client):
+    heroes = client.get("/api/cards?category=heroes").get_json()["items"]
+    arseldor = next(h for h in heroes if h["name"] == "Арсельдор")
+    assert "Навык «Магические стрелы»" in arseldor["fields"]["skills"]
+
+
+def test_create_casting_skill(client):
+    r = client.post("/api/cards", json={
+        "card_type": "skill", "name": "Навык «Ледяная игла»",
+        "spell_name": "Ледяная игла", "damage_dice": "2d6", "difficulty": 8,
+        "attack_stat": "wisdom", "price": 9, "is_passive": False,
+    })
+    assert r.status_code == 201
+    created = r.get_json()
+    assert created["fields"]["spell_name"] == "Ледяная игла"
+    assert created["fields"]["non_sellable"] is True
+    skills = client.get("/api/cards?category=skills").get_json()["items"]
+    assert "Навык «Ледяная игла»" in {s["name"] for s in skills}
+
+
+def test_create_skill_rejects_bad_dice(client):
+    r = client.post("/api/cards", json={
+        "card_type": "skill", "name": "Кривой навык", "damage_dice": "3d7",
+    })
+    assert r.status_code == 400
+    assert "damage_dice" in r.get_json()["errors"]
 
 
 def test_abilities_category(client):

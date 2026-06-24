@@ -17,11 +17,12 @@ const API = {
 // эмодзи-заглушка арта по типу карточки (если нет картинки)
 const TYPE_ICON = {
   character: "🧝", creature: "👹", weapon: "⚔️", armor: "🛡️",
-  item: "🎒", spellbook: "📖", scroll: "📜", instrument: "🪕",
+  item: "🎒", spellbook: "📖", scroll: "📜", instrument: "🪕", skill: "🎓",
 };
 const ART_BG = {
   character: "#2c3a52", creature: "#4a2c34", weapon: "#3a3450", armor: "#2c4a3e",
   item: "#4a4230", spellbook: "#36304e", scroll: "#45402c", instrument: "#3e2c4a",
+  skill: "#2c4450",
 };
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -179,6 +180,10 @@ function cardChips(card) {
     chips.push(chip("HP", s.hp));
     chips.push(chip("Физз", s.phys_defense));
   }
+  if (card.card_type === "skill") {
+    chips.push(`<span class="stat-chip">${f.is_passive ? "пассивный" : "активный"}</span>`);
+    if (f.spell_name) chips.push(chip("Заклинание", esc(f.spell_name)));
+  }
   if (f.damage_dice) chips.push(chip("Урон", f.damage_dice));
   if (f.phys_def_bonus != null) chips.push(chip("Защ", `+${f.phys_def_bonus}`));
   if (f.heal_dice) chips.push(chip("Хил", f.heal_dice));
@@ -219,6 +224,8 @@ function showDetail(card) {
     dex_requirement: "Треб. Ловкости", is_ranged: "Дальнобойное", price: "Цена",
     phys_def_bonus: "Бонус физзащиты", is_consumable: "Расходуемый", heal_dice: "Лечение",
     spell_name: "Заклинание", difficulty: "Сложность", attack_stat: "Хар-ка атаки",
+    is_passive: "Пассивный", non_sellable: "Нельзя продать", in_inventory: "Занимает слот инвентаря",
+    skills: "Навыки",
   };
   const fmt = (v) => v === true ? "да" : v === false ? "нет" : Array.isArray(v) ? (v.join(", ") || "—") : (v ?? "—");
   Object.entries(f).forEach(([k, v]) => {
