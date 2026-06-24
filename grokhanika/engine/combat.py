@@ -188,18 +188,22 @@ class Combat:
             crit=crit,
             fumble=fumble,
         )
+        weapon_tag = f" [{attacker.weapon.name}]" if attacker.weapon else " [кулак]"
         if hit:
             dice = Dice.parse(attacker.phys_damage_dice)
             result.damage = dice.roll(self.rng, crit=crit) + attacker.phys_damage_bonus
             defender.take_damage(result.damage)
             self.log.append(
-                f"{attacker.name} бьёт {defender.name}: {natural}+{bonus} vs {threshold} → "
-                f"{'КРИТ ' if crit else ''}{result.damage} урона"
+                f"{attacker.name}{weapon_tag} бьёт {defender.name}: "
+                f"d20={natural}+{bonus} vs ФЗ{threshold} → "
+                f"{'КРИТ ' if crit else ''}{result.damage} урона ({attacker.phys_damage_dice}+{attacker.phys_damage_bonus})"
             )
             self._fire_hit(attacker, defender, result)
         else:
             self.log.append(
-                f"{attacker.name} промахивается по {defender.name}: {natural}+{bonus} vs {threshold}"
+                f"{attacker.name}{weapon_tag} промахивается по {defender.name}: "
+                f"d20={natural}+{bonus}={total} vs ФЗ{threshold}"
+                + (" (фумбл)" if fumble else "")
             )
         return result
 
@@ -213,6 +217,7 @@ class Combat:
         damage_dice: str,
         difficulty: int,
         debuff: Optional[RuntimeEffect] = None,
+        spell_name: str = "",
     ) -> SpellResult:
         # шаг 1 — активация
         natural = roll_d20(self.rng)
@@ -228,9 +233,11 @@ class Combat:
             activation_total=activation_total,
             difficulty=difficulty,
         )
+        spell_tag = f" «{spell_name}»" if spell_name else ""
         if not activated:
             self.log.append(
-                f"{caster.name} проваливает заклинание: {activation_total} < сл.{difficulty}"
+                f"{caster.name}{spell_tag} проваливает заклинание: "
+                f"d20={natural}+{bonus}={activation_total} < сл.{difficulty}"
             )
             return result
 
@@ -253,9 +260,12 @@ class Combat:
                 result.debuff_applied = True
         result.damage = damage
         defender.take_damage(damage)
+        debuff_tag = f", дебафф: {debuff.description or debuff.target}" if (debuff and result.debuff_applied) else ""
         self.log.append(
-            f"{caster.name} кастует в {defender.name}: спас {save_total} vs {activation_total} → "
-            f"{'половина ' if saved else ''}{damage} урона"
+            f"{caster.name}{spell_tag} кастует в {defender.name}: "
+            f"актив d20={natural}+{bonus}={activation_total} vs сл.{difficulty}, "
+            f"спас {save_natural}+{defender.mag_defense}={save_total} → "
+            f"{'половина ' if saved else ''}{damage} урона ({damage_dice}){debuff_tag}"
         )
         self._fire_hit(caster, defender, result)
         return result
@@ -285,6 +295,7 @@ class Combat:
             defender,
             damage_dice=carrier.spell_damage_dice,
             difficulty=carrier.spell_difficulty,
+            spell_name=carrier.name,
         )
         # навык-заклинание не расходуется; расходуется лишь одноразовый предмет (свиток)
         if carrier.is_consumable:
@@ -315,9 +326,12 @@ class Combat:
         success = attack_total > defense_total
         if success and effect is not None:
             target.add_temporary_effect(effect)
+        eff_tag = f", эффект: «{effect.description or effect.target}»" if (effect and success) else ""
         self.log.append(
-            f"{attacker.name} мент.атака на {target.name}: {attack_total} vs {defense_total} → "
-            f"{'успех' if success else 'провал'}"
+            f"{attacker.name} ментальная атака на {target.name}: "
+            f"d20={atk_natural}+{attacker.mental_attack_bonus}={attack_total} vs "
+            f"d20={def_natural}+{target.mental_defense}={defense_total} → "
+            f"{'успех' if success else 'провал'}{eff_tag}"
         )
         return MentalResult(
             attacker=attacker.name,
@@ -339,12 +353,16 @@ class Combat:
         if potion is None:
             self.log.append(f"{user.name}: нет зелья лечения")
             return 0
-        healed = user.heal(Dice.parse(potion.heal_dice).roll(self.rng))
+        roll = Dice.parse(potion.heal_dice).roll(self.rng)
+        healed = user.heal(roll)
         if potion.is_consumable:
             potion.quantity -= 1
             if potion.quantity <= 0:
                 user.inventory.remove(potion)
-        self.log.append(f"{user.name} пьёт {potion.name}: +{healed} HP (теперь {user.current_hp})")
+        self.log.append(
+            f"{user.name} пьёт «{potion.name}» ({potion.heal_dice}): "
+            f"бросок={roll} → +{healed} HP (HP: {user.current_hp}/{user.max_hp})"
+        )
         return healed
 
     # ───────── групповые механики (§12) ─────────
@@ -356,10 +374,14 @@ class Combat:
         survived = total >= FLEE_THRESHOLD
         if survived:
             combatant.escaped = True
-            self.log.append(f"{combatant.name} сбегает ({total} ≥ {FLEE_THRESHOLD})")
+            self.log.append(
+                f"{combatant.name} сбегает: d20={natural}+ЛОВ{combatant.dex_eff}={total} ≥ {FLEE_THRESHOLD}"
+            )
         else:
             combatant.dead = True
-            self.log.append(f"{combatant.name} гибнет при побеге ({total} < {FLEE_THRESHOLD})")
+            self.log.append(
+                f"{combatant.name} гибнет при побеге: d20={natural}+ЛОВ{combatant.dex_eff}={total} < {FLEE_THRESHOLD}"
+            )
         return survived
 
     def _sum_str(self, side: str) -> int:

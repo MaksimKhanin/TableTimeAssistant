@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 from typing import Optional
+from urllib.parse import quote
 
 from flask import url_for
 
@@ -43,10 +44,19 @@ def _image_url(card: Card) -> Optional[str]:
     if not card.image_id:
         return None
     static_root = os.path.join(os.path.dirname(__file__), "static")
-    path = os.path.join(static_root, _IMAGES_SUBDIR, card.image_id)
+    # Поддержка как старого формата (просто имя файла), так и нового (тип/файл)
+    # Нормализуем разделители путей для кроссплатформенности
+    image_path = card.image_id.replace("/", os.sep)
+    path = os.path.join(static_root, _IMAGES_SUBDIR, image_path)
     if not os.path.isfile(path):
         return None
-    return url_for("static", filename=f"{_IMAGES_SUBDIR}/{card.image_id}")
+    # В URL всегда используем прямые слеши (нормализуем любой разделитель)
+    url_path = card.image_id.replace("\\", "/")
+    # Нормализуем весь путь для URL
+    full_url_path = f"{_IMAGES_SUBDIR}/{url_path}".replace("\\", "/")
+    
+    # Используем прямой URL без url_for() чтобы избежать двойного кодирования
+    return f"/static/{full_url_path}"
 
 
 # ───────────────────────── стат-блок (через движок) ─────────────────────────

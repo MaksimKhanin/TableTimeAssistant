@@ -66,15 +66,20 @@
             <label>Сид (для воспроизводимости):
               <input type="number" id="sim-seed" placeholder="напр. 7">
             </label>
+            <label class="sim-manual-label">
+              <input type="checkbox" id="sim-manual">
+              <span>Ручное управление союзниками</span>
+            </label>
             <button class="sim-go" id="sim-go">▶ Симулировать бой</button>
           </div>
         </div>
         <div class="roster-col" data-team="allies">
-          <h3>🛡️ Союзники <small>(ИИ играет за всех)</small></h3>
+          <h3>🛡️ Союзники <small id="allies-hint">(ИИ играет за всех)</small></h3>
           <div class="team-list" id="team-allies"></div>
         </div>
       </div>
 
+      <!-- Автобой (просмотр) -->
       <div class="sim-stage hidden" id="sim-stage">
         <div class="stage-bar">
           <div class="stage-side" id="stage-enemies"></div>
@@ -91,6 +96,58 @@
         </div>
         <div class="battle-log" id="battle-log"></div>
         <div class="outcome hidden" id="outcome"></div>
+      </div>
+
+      <!-- Интерактивный бой -->
+      <div class="battle-arena hidden" id="battle-arena">
+        <div class="ba-header">
+          <div class="ba-meta">
+            <span class="ba-round-label" id="ba-round-label">Начало боя</span>
+            <span class="ba-turn-label" id="ba-turn-label"></span>
+          </div>
+          <div class="ba-hint" id="ba-hint">Зажмите карточку и перетащите на врага, или удерживайте для меню</div>
+        </div>
+
+        <div class="ba-field">
+          <!-- Враги сверху -->
+          <div class="ba-row ba-enemies" id="ba-enemies"></div>
+
+          <!-- Разделитель -->
+          <div class="ba-divider">
+            <div class="ba-divider-line"></div>
+            <span class="ba-divider-icon">⚔️</span>
+            <div class="ba-divider-line"></div>
+          </div>
+
+          <!-- Союзники снизу -->
+          <div class="ba-row ba-allies" id="ba-allies"></div>
+        </div>
+
+        <div class="ba-bottom">
+          <div class="ba-log-wrap">
+            <div class="ba-log-header">
+              <span>Лог событий</span>
+              <label class="ba-verbose-toggle" title="Показать подробный лог для LLM">
+                <input type="checkbox" id="ba-verbose"> подробный
+              </label>
+            </div>
+            <div class="battle-log" id="ba-log"></div>
+            <div class="ba-verbose-wrap hidden" id="ba-verbose-wrap">
+              <div class="ba-verbose-label">Подробный лог (для LLM)</div>
+              <pre class="ba-verbose-log" id="ba-verbose-log"></pre>
+            </div>
+          </div>
+          <div class="ba-side-actions">
+            <button class="ba-flee-btn" id="ba-flee" title="Вся группа пытается сбежать (d20+DEX ≥ 10)">
+              🏃 Бежать
+            </button>
+            <button class="ba-pass-btn" id="ba-pass" title="Пропустить ход текущего персонажа">
+              ⏭ Пас
+            </button>
+          </div>
+        </div>
+
+        <div class="outcome hidden" id="ba-outcome"></div>
       </div>
     </section>
   </main>
@@ -122,6 +179,17 @@
   <div class="modal-backdrop hidden" id="detail-modal">
     <div class="modal modal-detail" id="detail-body"></div>
   </div>
+
+  <!-- ───────── Попап выбора действия ───────── -->
+  <div class="ap-backdrop hidden" id="action-popup-bg"></div>
+  <div class="action-popup hidden" id="action-popup">
+    <div class="ap-title" id="ap-title">Выберите действие</div>
+    <div class="ap-list" id="ap-list"></div>
+    <button class="ap-cancel" id="ap-cancel">✕ Отмена</button>
+  </div>
+
+  <!-- ───────── Радиальное меню ───────── -->
+  <div class="radial-menu hidden" id="radial-menu"></div>
 
   <div class="toast hidden" id="toast"></div>
 

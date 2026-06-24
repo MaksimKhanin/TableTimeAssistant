@@ -36,6 +36,7 @@ class AbilitySpec:
 
 @dataclass
 class _WeaponSnap:
+    name: str
     damage_dice: str
     is_ranged: bool
 
@@ -70,6 +71,7 @@ class Combatant:
         self.uid: int = next(_uid_counter)
         self.card_id: int = card.id
         self.name: str = card.name
+        self.description: str = getattr(card, "description", "") or ""
         self.side: str = side
         self.kind: str = card.card_type
         self.is_sentient: bool = bool(getattr(card, "is_sentient", False))
@@ -125,7 +127,7 @@ class Combatant:
 
         if card.equipped_weapon is not None:
             w = card.equipped_weapon
-            self.weapon = _WeaponSnap(damage_dice=w.damage_dice, is_ranged=w.is_ranged)
+            self.weapon = _WeaponSnap(name=w.name, damage_dice=w.damage_dice, is_ranged=w.is_ranged)
             self._weapon_effects = [RuntimeEffect.from_orm(e) for e in w.effects]
             self._gather_abilities(w)
 

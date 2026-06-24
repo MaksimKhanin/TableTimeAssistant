@@ -438,22 +438,7 @@ function renderTeams() {
   });
 }
 
-async function runSim() {
-  const allies = state.teams.allies.map(e => e.card.id);
-  const enemies = state.teams.enemies.map(e => e.card.id);
-  if (!allies.length || !enemies.length) { toast("Нужны участники с обеих сторон", true); return; }
-  const seedVal = $("#sim-seed").value;
-  const { ok, data } = await API.post("/api/simulate", {
-    allies, enemies, seed: seedVal === "" ? null : Number(seedVal),
-  });
-  if (!ok) { toast(data.error || "Ошибка симуляции", true); return; }
-  state.sim = data; state.step = 0;
-  $("#sim-stage").classList.remove("hidden");
-  $("#outcome").classList.add("hidden");
-  $("#battle-log").innerHTML = "";
-  renderStep(0, true);
-  $("#sim-stage").scrollIntoView({ behavior: "smooth" });
-}
+// runSim определена ниже (интерактивный бой или автосимуляция)
 
 function fighterEl(c) {
   const pct = c.max_hp ? Math.max(0, (c.hp / c.max_hp) * 100) : 0;
@@ -561,6 +546,745 @@ function togglePlay() {
 function openModal(sel) { $(sel).classList.remove("hidden"); }
 function closeModal(sel) { $(sel).classList.add("hidden"); }
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+// ───────────────────────── ИНТЕРАКТИВНЫЙ БОЙ ─────────────────────────
+
+const ib = {
+  battleId: null,
+  combatants: [],    // текущий снимок всех участников
+  actor: null,       // опции хода текущего игрового персонажа
+  status: null,      // "waiting" | "processing" | "over" | null
+  dragging: null,    // uid карточки, которую тянут
+  dragGhost: null,
+};
+
+// ── Переключение чекбокса "Ручное управление" ──
+
+function updateManualHint() {
+  const manual = $("#sim-manual").checked;
+  $("#allies-hint").textContent = manual ? "(вы управляете)" : "(ИИ играет за всех)";
+  $("#sim-go").textContent = manual ? "▶ Начать бой (ручной режим)" : "▶ Симулировать бой";
+}
+$("#sim-manual").addEventListener("change", updateManualHint);
+
+// ── Запуск ──
+
+async function runSim() {
+  if ($("#sim-manual").checked) {
+    await startInteractiveBattle();
+  } else {
+    await runAutoSim();
+  }
+}
+
+// ── Автосимуляция (без изменений логики) ──
+
+async function runAutoSim() {
+  const allies = state.teams.allies.map(e => e.card.id);
+  const enemies = state.teams.enemies.map(e => e.card.id);
+  if (!allies.length || !enemies.length) { toast("Нужны участники с обеих сторон", true); return; }
+  const seedVal = $("#sim-seed").value;
+  const { ok, data } = await API.post("/api/simulate", {
+    allies, enemies, seed: seedVal === "" ? null : Number(seedVal),
+  });
+  if (!ok) { toast(data.error || "Ошибка симуляции", true); return; }
+  state.sim = data; state.step = 0;
+  $("#battle-arena").classList.add("hidden");
+  $("#sim-stage").classList.remove("hidden");
+  $("#outcome").classList.add("hidden");
+  $("#battle-log").innerHTML = "";
+  renderStep(0, true);
+  $("#sim-stage").scrollIntoView({ behavior: "smooth" });
+}
+
+// ── Интерактивный бой ──
+
+async function startInteractiveBattle() {
+  const allies = state.teams.allies.map(e => e.card.id);
+  const enemies = state.teams.enemies.map(e => e.card.id);
+  if (!allies.length || !enemies.length) { toast("Нужны участники с обеих сторон", true); return; }
+  const seedVal = $("#sim-seed").value;
+
+  const { ok, data } = await API.post("/api/battle/start", {
+    allies, enemies, seed: seedVal === "" ? null : Number(seedVal),
+  });
+  if (!ok) { toast(data.error || "Ошибка запуска боя", true); return; }
+
+  ib.battleId = data.battle_id;
+  ib.combatants = data.combatants;
+
+  $("#sim-stage").classList.add("hidden");
+  $("#ba-log").innerHTML = "";
+  $("#ba-verbose-log").textContent = "";
+  $("#ba-outcome").classList.add("hidden");
+  $("#battle-arena").classList.remove("hidden");
+  $("#battle-arena").scrollIntoView({ behavior: "smooth" });
+  initVerboseToggle();
+
+  renderBattleArena(true);
+  applyBattleEvents(data.events);
+
+  if (data.status === "waiting") {
+    ib.actor = data.actor;
+    ib.status = "waiting";
+    renderBattleArena();
+    const actorC = ib.combatants.find(c => c.uid === data.actor.uid);
+    if (actorC) showTurnBanner(actorC.name, actorC.side).then(() => highlightActorTurn(data.actor));
+    else highlightActorTurn(data.actor);
+  } else if (data.status === "over") {
+    ib.status = "over";
+    showBattleOutcome(data.outcome);
+  }
+}
+
+// ── Отрисовка арены ──
+
+function renderBattleArena(rebuild = false) {
+  renderBattleRow("ba-enemies", "enemy", rebuild);
+  renderBattleRow("ba-allies", "party", rebuild);
+}
+
+function renderBattleRow(rowId, side, rebuild = false) {
+  const row = $(`#${rowId}`);
+  const coms = ib.combatants.filter(c => c.side === side);
+  if (rebuild || row.querySelectorAll(".bc").length !== coms.length) {
+    row.innerHTML = "";
+    coms.forEach(c => row.appendChild(createBattleCard(c)));
+  } else {
+    coms.forEach(c => updateBattleCard(c));
+  }
+}
+
+function createBattleCard(c) {
+  const unit = document.createElement("div");
+  unit.className = "bc-unit";
+
+  // Зона эффектов слева
+  const effZone = document.createElement("div");
+  effZone.className = "bc-eff-zone";
+  effZone.innerHTML = renderEffectCols(c.effects || []);
+
+  // Ячейка: карточка + имя
+  const cell = document.createElement("div");
+  cell.className = "bc-cell";
+
+  const el = document.createElement("div");
+  el.className = "bc";
+  el.dataset.uid = c.uid;
+  el.dataset.side = c.side;
+  if (!c.alive || c.dying) el.classList.add("down");
+  if (c.has_bastion) el.classList.add("has-bastion");
+
+  const pct = c.max_hp ? Math.max(0, (c.hp / c.max_hp) * 100) : 0;
+  const hpColor = c.side === "enemy"
+    ? `background:linear-gradient(90deg,var(--enemy),#ff8a7d)`
+    : `background:linear-gradient(90deg,var(--good),#8fd36a)`;
+  const descAttr = c.description ? ` title="${esc(c.description)}"` : "";
+  el.innerHTML = `
+    ${c.has_bastion ? '<div class="bc-bastion-badge">🛡</div>' : ""}
+    <div class="bc-icon"${descAttr}>${TYPE_ICON[c.kind] || "❓"}</div>
+    <div class="hpbar"><i style="width:${pct}%;${hpColor}"></i></div>
+    <div class="bc-hp">${c.hp}/${c.max_hp}</div>
+    <div class="bc-defenses">${renderDefenses(c)}</div>`;
+
+  const nameEl = document.createElement("div");
+  nameEl.className = "bc-name";
+  nameEl.textContent = c.name;
+
+  cell.appendChild(el);
+  cell.appendChild(nameEl);
+  unit.appendChild(effZone);
+  unit.appendChild(cell);
+
+  if (c.side === "party") setupAllyDrag(el, c.uid);
+  return unit;
+}
+
+function renderDefenses(c) {
+  if (c.phys_def == null) return "";
+  return `
+    <div class="bc-def-chip" title="Физическая защита">
+      <span class="bc-def-icon">🛡️</span><span class="bc-def-val">${c.phys_def}</span>
+    </div>
+    <div class="bc-def-chip" title="Магическая защита">
+      <span class="bc-def-icon">🔮</span><span class="bc-def-val">${c.mag_def}</span>
+    </div>
+    <div class="bc-def-chip" title="Ментальная защита">
+      <span class="bc-def-icon">🧠</span><span class="bc-def-val">${c.mental_def}</span>
+    </div>`;
+}
+
+function renderEffectCols(effects) {
+  if (!effects.length) return "";
+  const cols = [];
+  for (let i = 0; i < effects.length; i += 5) cols.push(effects.slice(i, i + 5));
+  return cols.map(col =>
+    `<div class="bc-eff-col">${col.map(renderEffectDot).join("")}</div>`
+  ).join("");
+}
+
+function renderEffectDot(e) {
+  const isSpecial = e.modifier === 0;
+  const cls = isSpecial ? "special" : (e.modifier > 0 ? "buff" : "debuff");
+  const icon = isSpecial ? "✦" : (e.modifier > 0 ? "▲" : "▼");
+  const sign = e.modifier > 0 ? "+" : "";
+  const modStr = isSpecial ? "" : ` ${sign}${e.modifier}`;
+  const dur = e.duration > 0 ? ` (${e.duration} р.)` : "";
+  const tip = `${e.description || e.target}${modStr}${dur}`.trim();
+  return `<span class="bc-eff-dot ${cls}" title="${esc(tip)}">${icon}</span>`;
+}
+
+function updateBattleCard(c) {
+  const el = document.querySelector(`.bc[data-uid="${c.uid}"]`);
+  if (!el) return;
+  const pct = c.max_hp ? Math.max(0, (c.hp / c.max_hp) * 100) : 0;
+  el.querySelector(".hpbar > i").style.width = pct + "%";
+  el.querySelector(".bc-hp").textContent = `${c.hp}/${c.max_hp}`;
+  el.classList.toggle("down", !c.alive || c.dying);
+  el.classList.toggle("has-bastion", c.has_bastion);
+  const badge = el.querySelector(".bc-bastion-badge");
+  if (c.has_bastion && !badge) {
+    const div = document.createElement("div");
+    div.className = "bc-bastion-badge"; div.textContent = "🛡";
+    el.prepend(div);
+  } else if (!c.has_bastion && badge) {
+    badge.remove();
+  }
+  const defEl = el.querySelector(".bc-defenses");
+  if (defEl) defEl.innerHTML = renderDefenses(c);
+  // обновляем эффекты в зоне слева от карточки
+  const unit = el.closest(".bc-unit");
+  if (unit) {
+    const effZone = unit.querySelector(".bc-eff-zone");
+    if (effZone) effZone.innerHTML = renderEffectCols(c.effects || []);
+  }
+}
+
+// ── Подсветка хода ──
+
+function highlightActorTurn(actor) {
+  $$(".bc[data-side=party]").forEach(el => {
+    const isActor = parseInt(el.dataset.uid) === actor.uid;
+    el.classList.toggle("active-turn", isActor);
+    const unit = el.closest(".bc-unit");
+    if (unit) unit.classList.toggle("dimmed", !isActor && !el.classList.contains("down"));
+  });
+  $("#ba-turn-label").textContent = `Ходит: ${actor.name}`;
+  setArenaButtons(true);
+}
+
+function clearTurnHighlight() {
+  $$(".bc").forEach(el => el.classList.remove("active-turn", "valid-target", "invalid-target"));
+  $$(".bc-unit").forEach(el => el.classList.remove("dimmed"));
+  $("#ba-turn-label").textContent = "";
+  setArenaButtons(false);
+}
+
+function setArenaButtons(enabled) {
+  $("#ba-flee").disabled = !enabled;
+  $("#ba-pass").disabled = !enabled;
+}
+
+// ── Drag-to-attack ──
+
+function setupAllyDrag(el, uid) {
+  let longTimer = null;
+  let dragStarted = false;
+  let sx, sy;
+
+  el.addEventListener("contextmenu", e => {
+    e.preventDefault();
+    if (canActorAct(uid)) showRadialMenu(e.clientX, e.clientY, uid);
+  });
+
+  el.addEventListener("pointerdown", e => {
+    if (!canActorAct(uid)) return;
+    e.preventDefault();
+    sx = e.clientX; sy = e.clientY;
+    dragStarted = false;
+    el.setPointerCapture(e.pointerId);
+
+    longTimer = setTimeout(() => {
+      if (!dragStarted) showRadialMenu(sx, sy, uid);
+    }, 500);
+
+    function onMove(e) {
+      if (!dragStarted && (Math.abs(e.clientX - sx) > 8 || Math.abs(e.clientY - sy) > 8)) {
+        dragStarted = true;
+        clearTimeout(longTimer);
+        startDrag(uid, e.clientX, e.clientY);
+      }
+      if (dragStarted) moveDrag(e.clientX, e.clientY);
+    }
+    function onUp(e) {
+      clearTimeout(longTimer);
+      cleanup();
+      if (dragStarted) endDrag(e.clientX, e.clientY, uid);
+    }
+    function onCancel() { clearTimeout(longTimer); cleanup(); cancelDrag(); }
+    function cleanup() {
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup", onUp);
+      el.removeEventListener("pointercancel", onCancel);
+    }
+    el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerup", onUp);
+    el.addEventListener("pointercancel", onCancel);
+  });
+}
+
+function startDrag(uid, x, y) {
+  ib.dragging = uid;
+  const actor = ib.actor;
+  if (!actor) return;
+
+  // Подсветить допустимые цели
+  $$(".bc[data-side=enemy]").forEach(el => {
+    const t = actor.targets.find(t => t.uid === parseInt(el.dataset.uid));
+    el.classList.toggle("valid-target", !!(t && t.available));
+    el.classList.toggle("invalid-target", !(t && t.available));
+  });
+
+  // Создать призрак
+  const src = document.querySelector(`.bc[data-uid="${uid}"]`);
+  const ghost = src.cloneNode(true);
+  ghost.className = "bc drag-ghost";
+  ghost.style.width = src.offsetWidth + "px";
+  document.body.appendChild(ghost);
+  ib.dragGhost = ghost;
+  moveDrag(x, y);
+}
+
+function moveDrag(x, y) {
+  if (!ib.dragGhost) return;
+  const g = ib.dragGhost;
+  g.style.left = (x - g.offsetWidth / 2) + "px";
+  g.style.top = (y - g.offsetHeight / 2) + "px";
+}
+
+function endDrag(x, y, uid) {
+  if (ib.dragGhost) { ib.dragGhost.remove(); ib.dragGhost = null; }
+  restoreDragVisuals();
+
+  // Найти карточку под пальцем/курсором
+  const el = document.elementFromPoint(x, y);
+  const card = el && el.closest(".bc[data-side=enemy]");
+  if (card) {
+    const targetUid = parseInt(card.dataset.uid);
+    const actor = ib.actor;
+    const t = actor && actor.targets.find(t => t.uid === targetUid);
+    if (t && t.available) {
+      showAttackPopup(uid, targetUid);
+    } else {
+      card.classList.add("shake");
+      setTimeout(() => card.classList.remove("shake"), 450);
+    }
+  }
+  ib.dragging = null;
+}
+
+function cancelDrag() {
+  if (ib.dragGhost) { ib.dragGhost.remove(); ib.dragGhost = null; }
+  restoreDragVisuals();
+  ib.dragging = null;
+}
+
+function restoreDragVisuals() {
+  $$(".bc").forEach(el => el.classList.remove("valid-target", "invalid-target"));
+  if (ib.actor) highlightActorTurn(ib.actor);
+}
+
+// ── Попап выбора действия ──
+
+function showAttackPopup(actorUid, targetUid) {
+  const actor = ib.actor;
+  if (!actor || actor.uid !== actorUid) return;
+  const t = actor.targets.find(t => t.uid === targetUid);
+  const list = $("#ap-list");
+  list.innerHTML = "";
+  $("#ap-title").textContent = `→ ${t ? t.name : "цель"}`;
+
+  addApItem("⚔️ Физическая атака", () => {
+    sendAction({ kind: "attack_physical", target_uid: targetUid });
+    closeApPopup();
+  });
+  actor.spells.forEach(sp => {
+    addApItem(`✨ ${sp.name}  (${sp.damage}, сл.${sp.difficulty})`, () => {
+      sendAction({ kind: "cast_spell", target_uid: targetUid, carrier_card_id: sp.carrier_id });
+      closeApPopup();
+    });
+  });
+
+  openApPopup();
+}
+
+function addApItem(label, onClick, disabled = false) {
+  const btn = document.createElement("button");
+  btn.className = "ap-item" + (disabled ? " disabled" : "");
+  btn.textContent = label;
+  if (onClick && !disabled) btn.onclick = onClick;
+  $("#ap-list").appendChild(btn);
+}
+
+function openApPopup() { $("#action-popup").classList.remove("hidden"); $("#action-popup-bg").classList.remove("hidden"); }
+function closeApPopup() { $("#action-popup").classList.add("hidden"); $("#action-popup-bg").classList.add("hidden"); }
+
+// ── Радиальное меню ──
+
+function showRadialMenu(cx, cy, uid) {
+  const actor = ib.actor;
+  if (!actor || actor.uid !== uid) return;
+
+  const items = buildRadialItems(actor);
+  if (!items.length) return;
+
+  const r = 82;
+
+  // Clamp so the ring (radius + half-item 28px) stays within viewport
+  const margin = r + 28;
+  cx = Math.max(margin, Math.min(window.innerWidth  - margin, cx));
+  cy = Math.max(margin, Math.min(window.innerHeight - margin, cy));
+
+  const menu = $("#radial-menu");
+  menu.innerHTML = "";
+
+  // Центральная точка
+  const center = document.createElement("div");
+  center.className = "radial-center";
+  center.style.left = cx + "px";
+  center.style.top = cy + "px";
+  menu.appendChild(center);
+  items.forEach((item, i) => {
+    const angle = ((-90 + (360 / items.length) * i) * Math.PI) / 180;
+    const ix = cx + r * Math.cos(angle);
+    const iy = cy + r * Math.sin(angle);
+    const el = document.createElement("button");
+    el.className = "radial-item" + (item.disabled ? " disabled" : "");
+    el.style.left = ix + "px";
+    el.style.top = iy + "px";
+    el.style.animationDelay = `${i * 30}ms`;
+    el.title = item.tooltip || item.label;
+    el.innerHTML = `<span class="ri-icon">${item.icon}</span><span class="ri-label">${esc(item.label)}</span>`;
+    if (!item.disabled) el.onclick = () => { closeRadialMenu(); item.action(); };
+    menu.appendChild(el);
+  });
+
+  menu.classList.remove("hidden");
+  setTimeout(() => document.addEventListener("pointerdown", closeRadialMenuOnce), 80);
+}
+
+function closeRadialMenuOnce(e) {
+  if (!e.target.closest(".radial-item")) closeRadialMenu();
+}
+function closeRadialMenu() {
+  $("#radial-menu").classList.add("hidden");
+  document.removeEventListener("pointerdown", closeRadialMenuOnce);
+}
+
+function buildRadialItems(actor) {
+  const items = [];
+
+  // Физическая атака → выбор цели
+  items.push({
+    icon: "⚔️", label: "Атака",
+    action: () => showTargetPopup("attack", actor),
+  });
+
+  // Заклинания → выбор цели
+  actor.spells.forEach(sp => {
+    items.push({
+      icon: "✨", label: sp.name,
+      action: () => showTargetPopup("spell", actor, sp),
+    });
+  });
+
+  // Активные способности
+  actor.active_abilities.forEach(ab => {
+    items.push({
+      icon: "⭐", label: ab.name,
+      action: () => sendAction({ kind: "activate_ability", ability_name: ab.name }),
+    });
+  });
+
+  // Зелье
+  if (actor.has_potion) {
+    items.push({
+      icon: "🧪", label: "Зелье",
+      action: () => sendAction({ kind: "use_potion" }),
+    });
+  }
+
+  // Договориться
+  items.push({
+    icon: "🤝", label: "Договор",
+    disabled: !actor.can_negotiate.available,
+    tooltip: actor.can_negotiate.reason || "Начать переговоры",
+    action: () => sendAction({ kind: "negotiate", enemy_side: "enemy" }),
+  });
+
+  // Устрашение
+  items.push({
+    icon: "😱", label: "Устрашить",
+    disabled: !actor.can_intimidate.available,
+    tooltip: actor.can_intimidate.reason || "Устрашить врагов",
+    action: () => sendAction({ kind: "intimidate", enemy_side: "enemy" }),
+  });
+
+  return items.slice(0, 8);
+}
+
+function showTargetPopup(type, actor, spell = null) {
+  const list = $("#ap-list");
+  list.innerHTML = "";
+  $("#ap-title").textContent = type === "spell"
+    ? `Цель: ${spell.name}`
+    : "Выбрать цель";
+
+  const targets = actor.targets.filter(t => t.available);
+  if (!targets.length) {
+    addApItem("Нет допустимых целей", null, true);
+  } else {
+    targets.forEach(t => {
+      const hpPct = t.max_hp ? Math.round((t.hp / t.max_hp) * 100) : 0;
+      const label = `${t.name}  ${t.hp}/${t.max_hp} HP${t.has_bastion ? " 🛡" : ""}  (${hpPct}%)`;
+      addApItem(label, () => {
+        if (type === "spell") {
+          sendAction({ kind: "cast_spell", target_uid: t.uid, carrier_card_id: spell.carrier_id });
+        } else {
+          sendAction({ kind: "attack_physical", target_uid: t.uid });
+        }
+        closeApPopup();
+      });
+    });
+  }
+  openApPopup();
+}
+
+// ── Отправка действия ──
+
+async function sendAction(actionData) {
+  if (!ib.battleId || ib.status !== "waiting") return;
+  ib.status = "processing";
+  clearTurnHighlight();
+
+  const { ok, data } = await API.post(`/api/battle/${ib.battleId}/action`, actionData);
+  if (!ok) {
+    toast(data.error || "Ошибка", true);
+    ib.status = "waiting";
+    if (ib.actor) highlightActorTurn(ib.actor);
+    return;
+  }
+
+  await animateBattleEvents(data.events);
+
+  ib.combatants = data.combatants;
+  renderBattleArena();
+
+  if (data.status === "waiting") {
+    ib.actor = data.actor;
+    ib.status = "waiting";
+    // Баннер — в начале хода игрока, после того как враги отыграли
+    const actorCombatant = ib.combatants.find(c => c.uid === data.actor.uid);
+    if (actorCombatant) await showTurnBanner(actorCombatant.name, actorCombatant.side);
+    highlightActorTurn(data.actor);
+  } else if (data.status === "over") {
+    ib.status = "over";
+    ib.actor = null;
+    clearTurnHighlight();
+    showBattleOutcome(data.outcome);
+  }
+}
+
+// ── Анимация событий ──
+
+function applyBattleEvents(events) {
+  const log = $("#ba-log");
+  events.forEach(ev => appendEventToLog(log, ev));
+  log.scrollTop = log.scrollHeight;
+  if (events.length) updateRoundLabel(events[events.length - 1]);
+  appendVerboseLog(events);
+}
+
+async function animateBattleEvents(events) {
+  const log = $("#ba-log");
+  let lastActorUid = null;
+  for (const ev of events) {
+    // Баннер только для хода врага (ход игрока — после окончания анимации)
+    if (ev.phase === "action" && ev.actor_uid != null && ev.actor_uid !== lastActorUid) {
+      lastActorUid = ev.actor_uid;
+      const c = ib.combatants.find(x => x.uid === ev.actor_uid);
+      if (c && c.side === "enemy") await showTurnBanner(c.name, c.side, 800);
+    }
+
+    appendEventToLog(log, ev);
+    log.scrollTop = log.scrollHeight;
+    updateRoundLabel(ev);
+    if (ev.combatants) {
+      const prevHp = {};
+      ib.combatants.forEach(c => { prevHp[c.uid] = c.hp; });
+      // Найти цель (тот кто потерял HP) и запустить анимацию атаки
+      let targetUid = null;
+      ev.combatants.forEach(c => {
+        if (prevHp[c.uid] !== undefined && c.hp < prevHp[c.uid]) targetUid = c.uid;
+      });
+      if (ev.actor_uid && targetUid) animateAttack(ev.actor_uid, targetUid);
+      ev.combatants.forEach(c => {
+        updateBattleCard(c);
+        if (prevHp[c.uid] !== undefined && prevHp[c.uid] !== c.hp) {
+          spawnDmgFloat(c.uid, c.hp - prevHp[c.uid]);
+        }
+      });
+    }
+    appendVerboseLog([ev]);
+    await pause(220);
+  }
+}
+
+function animateAttack(attackerUid, targetUid) {
+  const src = document.querySelector(`.bc[data-uid="${attackerUid}"]`);
+  const tgt = document.querySelector(`.bc[data-uid="${targetUid}"]`);
+  if (!src || !tgt) return;
+  const sr = src.getBoundingClientRect();
+  const tr = tgt.getBoundingClientRect();
+  const dx = (tr.left + tr.width / 2) - (sr.left + sr.width / 2);
+  const dy = (tr.top + tr.height / 2) - (sr.top + sr.height / 2);
+  const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+  const nx = (dx / dist) * Math.min(28, dist * 0.35);
+  const ny = (dy / dist) * Math.min(28, dist * 0.35);
+
+  // Атакующий — рывок вперёд и назад
+  src.style.transition = "transform 90ms ease-out";
+  src.style.transform = `translate(${nx}px,${ny}px) scale(1.06)`;
+  setTimeout(() => {
+    src.style.transition = "transform 200ms ease-in-out";
+    src.style.transform = "";
+    setTimeout(() => { src.style.transition = ""; }, 220);
+  }, 90);
+
+  // Цель — вспышка при попадании (с небольшой задержкой)
+  setTimeout(() => {
+    tgt.classList.remove("hit-flash");
+    void tgt.offsetWidth; // reflow
+    tgt.classList.add("hit-flash");
+    setTimeout(() => tgt.classList.remove("hit-flash"), 400);
+  }, 80);
+}
+
+function appendVerboseLog(events) {
+  const pre = $("#ba-verbose-log");
+  if (!pre) return;
+  events.forEach(ev => {
+    if (!ev.log || !ev.log.length) return;
+    if (ev.phase === "round_start") pre.textContent += `\n=== Раунд ${ev.round} ===\n`;
+    ev.log.forEach(line => { pre.textContent += line + "\n"; });
+  });
+  pre.scrollTop = pre.scrollHeight;
+}
+
+function initVerboseToggle() {
+  const cb = document.getElementById("ba-verbose");
+  const wrap = document.getElementById("ba-verbose-wrap");
+  if (!cb || !wrap) return;
+  cb.addEventListener("change", () => {
+    wrap.classList.toggle("hidden", !cb.checked);
+  });
+}
+
+function showTurnBanner(name, side, duration = 1100) {
+  return new Promise(resolve => {
+    const el = document.createElement("div");
+    el.className = "turn-banner" + (side === "enemy" ? " side-enemy" : " side-ally");
+    el.style.animationDuration = duration + "ms";
+    el.innerHTML = `
+      <div class="turn-banner-inner">
+        <div class="turn-banner-label">Ходит</div>
+        <div class="turn-banner-name">${esc(name)}</div>
+      </div>`;
+    document.body.appendChild(el);
+    setTimeout(() => { el.remove(); resolve(); }, duration);
+  });
+}
+
+function appendEventToLog(log, ev) {
+  if (ev.phase === "round_start" || (ev.phase === "start" && ev.log.length === 0)) {
+    if (ev.phase === "round_start") {
+      const rm = document.createElement("div");
+      rm.className = "line round-mark";
+      rm.textContent = `— Раунд ${ev.round} —`;
+      log.appendChild(rm);
+    }
+  }
+  ev.log.forEach(line => {
+    const d = document.createElement("div");
+    d.className = "line"; d.textContent = line;
+    log.appendChild(d);
+  });
+}
+
+function updateRoundLabel(ev) {
+  if (ev.phase === "start") { $("#ba-round-label").textContent = "Начало боя"; return; }
+  if (ev.phase === "round_start" || ev.phase === "action" || ev.phase === "round_end") {
+    $("#ba-round-label").textContent = `Раунд ${ev.round}`;
+  }
+}
+
+function spawnDmgFloat(uid, delta) {
+  const card = document.querySelector(`.bc[data-uid="${uid}"]`);
+  if (!card) return;
+  const rect = card.getBoundingClientRect();
+  const el = document.createElement("div");
+  el.className = "dmg-float" + (delta > 0 ? " heal" : "");
+  el.textContent = (delta > 0 ? "+" : "") + delta;
+  el.style.left = (rect.left + rect.width / 2 - 16) + "px";
+  el.style.top = (rect.top + 8) + "px";
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 950);
+}
+
+function showBattleOutcome(outcome) {
+  const box = $("#ba-outcome");
+  let cls = "draw", txt;
+  if (outcome.winner === "party") { cls = "win-allies"; txt = "🛡️ Победа союзников!"; }
+  else if (outcome.winner === "enemy") { cls = "win-enemies"; txt = "👹 Победа врагов!"; }
+  else txt = outcome.ended_by === "negotiation" ? "🤝 Бой завершён переговорами"
+           : outcome.ended_by === "timeout" ? "⏳ Ничья по таймауту" : "Ничья";
+  const surv = Object.entries(outcome.survivors)
+    .map(([s, names]) => `${s === "party" ? "Союзники" : "Враги"}: ${names.join(", ") || "—"}`).join(" · ");
+  box.className = "outcome " + cls;
+  box.innerHTML = `<div>${txt}</div>
+    <div class="survivors">за ${outcome.rounds} раунд(ов) · ${outcome.ended_by}</div>
+    <div class="survivors">Выжившие — ${surv}</div>
+    <button onclick="leaveBattle()" style="margin-top:14px" class="btn-secondary">← Назад к настройке</button>`;
+  box.classList.remove("hidden");
+}
+
+function leaveBattle() {
+  $("#battle-arena").classList.add("hidden");
+  Object.assign(ib, { battleId: null, combatants: [], actor: null, status: null, dragging: null, dragGhost: null });
+}
+
+function canActorAct(uid) {
+  return ib.status === "waiting" && ib.actor && ib.actor.uid === uid;
+}
+
+function pause(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── Кнопки боя ──
+
+$("#ba-flee").onclick = () => {
+  if (ib.status !== "waiting") return;
+  if (!confirm("Попытаться сбежать всей группой?\n\nКаждый бросает d20 + DEX ≥ 10. Провал — гибель.")) return;
+  closeRadialMenu();
+  sendAction({ kind: "flee" });
+};
+
+$("#ba-pass").onclick = () => {
+  if (ib.status !== "waiting") return;
+  sendAction({ kind: "pass" });
+};
+
+$("#ap-cancel").onclick = closeApPopup;
+$("#action-popup-bg").onclick = closeApPopup;
 
 // ───────────────────────── привязка событий ─────────────────────────
 

@@ -10,7 +10,7 @@ from flask import Blueprint, g, jsonify, request
 from ..enums import CardType
 from . import repository, schema
 from .serialize import serialize_card
-from .simulation import run_simulation
+from .simulation import run_simulation, start_interactive, submit_action
 
 api = Blueprint("api", __name__, url_prefix="/api")
 
@@ -60,7 +60,6 @@ def forms():
     payload = []
     for card_type, form in schema.CARD_FORMS.items():
         data = form.to_dict()
-        # дозаполняем choices для полей со ссылкой на существующие карточки
         for fld in data["fields"]:
             if fld["choices_source"]:
                 fld["choices"] = repository.choices_for(session, fld["choices_source"])
@@ -87,7 +86,7 @@ def create_card():
 
 @api.get("/roster")
 def roster():
-    """Доступные для боя участники: герои, NPC и существа (для выбора сторон)."""
+    """Доступные для боя участники: герои, NPC и существа."""
     session = _session()
     heroes = repository.list_category(session, "heroes", sort="name")
     npc = repository.list_category(session, "npc", sort="name")
@@ -106,4 +105,33 @@ def simulate():
         result = run_simulation(_session(), ally_ids, enemy_ids, seed=seed)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
+    return jsonify(result)
+
+
+# ───────────────────────── интерактивный бой ─────────────────────────
+
+
+@api.post("/battle/start")
+def battle_start():
+    """Начать интерактивный бой: вернуть начальное состояние + первый ход игрока."""
+    body = request.get_json(silent=True) or {}
+    ally_ids = [int(x) for x in body.get("allies", [])]
+    enemy_ids = [int(x) for x in body.get("enemies", [])]
+    seed = body.get("seed")
+    seed = int(seed) if seed not in (None, "") else None
+    try:
+        result = start_interactive(_session(), ally_ids, enemy_ids, seed=seed)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(result)
+
+
+@api.post("/battle/<battle_id>/action")
+def battle_action(battle_id: str):
+    """Принять действие игрока; вернуть новые события и следующий ход игрока."""
+    body = request.get_json(silent=True) or {}
+    try:
+        result = submit_action(battle_id, body)
+    except KeyError:
+        return jsonify({"error": "Сессия боя не найдена — возможно, бой уже завершён"}), 404
     return jsonify(result)
