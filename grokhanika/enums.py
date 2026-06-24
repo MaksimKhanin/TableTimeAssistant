@@ -118,3 +118,5 @@ class ActionType(str, Enum):
     SUMMON = "summon"             # призвать существо
     INSTAKILL = "instakill"       # мгновенное убийство (по шансу)
     APPLY_MORALE = "apply_morale" # дебафф морали на сторону
+    BUFF_ALLIES = "buff_allies"       # ментальный бафф всех сопартийцев (§10)
+    DEBUFF_ENEMIES = "debuff_enemies" # ментальный дебафф всех врагов (контест §10)

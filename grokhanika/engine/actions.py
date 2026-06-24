@@ -20,6 +20,7 @@ class ActionKind(str, Enum):
     FLEE = "flee"
     INTIMIDATE = "intimidate"
     NEGOTIATE = "negotiate"
+    ACTIVATE_ABILITY = "activate_ability"
     PASS = "pass"
 
 
@@ -33,6 +34,7 @@ class Action:
     carrier_card_id: Optional[int] = None
     item_name: Optional[str] = None
     effect: Optional[object] = None  # RuntimeEffect для ментальной атаки
+    ability_name: Optional[str] = None  # для ACTIVATE_ABILITY
 
     # ── фабрики для краткости ──
 
@@ -63,6 +65,10 @@ class Action:
     @classmethod
     def negotiate(cls, enemy_side: str) -> "Action":
         return cls(ActionKind.NEGOTIATE, enemy_side=enemy_side)
+
+    @classmethod
+    def activate(cls, ability_name: str, target_uid: Optional[int] = None) -> "Action":
+        return cls(ActionKind.ACTIVATE_ABILITY, ability_name=ability_name, target_uid=target_uid)
 
     @classmethod
     def do_nothing(cls) -> "Action":

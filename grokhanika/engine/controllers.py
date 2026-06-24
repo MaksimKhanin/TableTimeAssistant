@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Iterable, Iterator, Optional, Protocol, runtime_checkable
 
+from ..enums import AbilityTrigger
 from .actions import Action
 from .combatant import Combatant
 
@@ -53,10 +54,26 @@ class SimpleAIController:
         if target is None:
             return Action.do_nothing()
 
+        # одноразовая активная способность (бафф/дебафф) — применяем сразу
+        active = self._available_active(actor)
+        if active is not None:
+            return Action.activate(active.name)
+
         carrier = self._best_spell_carrier(actor)
         if carrier is not None and actor.mag_attack_bonus >= actor.phys_attack_bonus:
             return Action.cast(target.uid, carrier.card_id)
         return Action.attack(target.uid)
+
+    @staticmethod
+    def _available_active(actor: Combatant):
+        for spec in actor.abilities:
+            if (
+                spec.trigger == AbilityTrigger.ACTIVE.value
+                and spec.once_per_combat
+                and not spec.used
+            ):
+                return spec
+        return None
 
     @staticmethod
     def _pick_target(combat, actor: Combatant) -> Optional[Combatant]:

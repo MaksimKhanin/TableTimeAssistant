@@ -20,10 +20,25 @@ from .models import (
     Character,
     Creature,
     Effect,
+    Instrument,
     Item,
     SpellBook,
     Weapon,
 )
+
+
+def _buff_ability(name: str, desc: str, effect: dict) -> Ability:
+    return Ability(
+        name=name, description=desc, trigger=AbilityTrigger.ACTIVE.value,
+        once_per_combat=True, actions=[{"type": ActionType.BUFF_ALLIES.value, "effect": effect}],
+    )
+
+
+def _debuff_ability(name: str, desc: str, effect: dict) -> Ability:
+    return Ability(
+        name=name, description=desc, trigger=AbilityTrigger.ACTIVE.value,
+        once_per_combat=True, actions=[{"type": ActionType.DEBUFF_ENEMIES.value, "effect": effect}],
+    )
 
 
 def _stat_eff(target: EffectTarget, modifier: int, source_type: SourceType, activation: ActivationSource, desc: str) -> Effect:
@@ -120,6 +135,36 @@ def seed_all(session) -> dict:
         effects=[_attr_eff(EffectTarget.HP, 5, SourceType.ITEM, ActivationSource.IN_INVENTORY, "Амулет живучести: +5 HP")],
     )
 
+    # ───────── инструменты: ментальные способности (§6, §10) ─────────
+    cat["inspiring_lute"] = Instrument(
+        name="Лютня вдохновения", description="Воодушевляет всю партию", price=12,
+        abilities=[
+            _buff_ability(
+                "Песнь храбрости", "Бафф всех сопартийцев: +2 ко всем d20 на 3 раунда",
+                {
+                    "target_type": EffectTargetType.ATTR.value,
+                    "target": EffectTarget.ALL_D20_ROLLS.value,
+                    "modifier": 2, "duration": 3, "source_type": SourceType.ITEM.value,
+                    "description": "Воодушевление: +2 ко всем d20",
+                },
+            )
+        ],
+    )
+    cat["war_drum"] = Instrument(
+        name="Барабан войны", description="Деморализует врагов", price=12,
+        abilities=[
+            _debuff_ability(
+                "Гром деморализации", "Дебафф всех врагов: -2 к броскам атаки на 3 раунда",
+                {
+                    "target_type": EffectTargetType.ATTR.value,
+                    "target": EffectTarget.ALL_ATTACK_ROLLS.value,
+                    "modifier": -2, "duration": 3, "source_type": SourceType.ITEM.value,
+                    "description": "Деморализация: -2 к атакам",
+                },
+            )
+        ],
+    )
+
     # ───────── тома магии (§14) ─────────
     cat["tome_ray"] = SpellBook(
         name="Том «Магический луч»", spell_name="Магический луч",
@@ -147,7 +192,7 @@ def seed_all(session) -> dict:
         name="Салли", description="Следопыт / Лучник", is_player=True,
         base_strength=5, base_dexterity=10, base_wisdom=7, base_charisma=3, money=2,
         equipped_weapon=cat["bow"], equipped_armor=cat["leather"],
-        inventory=[cat["small_heal"], cat["magic_arrows"]],
+        inventory=[cat["small_heal"], cat["magic_arrows"], cat["inspiring_lute"]],
     )
     cat["arseldor"] = Character(
         name="Арсельдор", description="Маг", is_player=True,
@@ -188,7 +233,16 @@ def seed_all(session) -> dict:
                 name="Зов мертвецов", description="В начале боя призывает двух гоблинов",
                 trigger=AbilityTrigger.ON_COMBAT_START.value, once_per_combat=True,
                 actions=[{"type": ActionType.SUMMON.value, "creature_id": cat["goblin"].id, "count": 2}],
-            )
+            ),
+            _debuff_ability(
+                "Леденящий взор", "Дебафф всех врагов: -2 к броскам атаки на 3 раунда",
+                {
+                    "target_type": EffectTargetType.ATTR.value,
+                    "target": EffectTarget.ALL_ATTACK_ROLLS.value,
+                    "modifier": -2, "duration": 3, "source_type": SourceType.SPELL.value,
+                    "description": "Леденящий взор: -2 к атакам",
+                },
+            ),
         ],
     )
     session.add(cat["necromancer"])

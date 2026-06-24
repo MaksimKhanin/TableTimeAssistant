@@ -74,23 +74,62 @@ def _instakill(action: dict, ctx: AbilityContext) -> None:
         ctx.log.append(f"{ctx.actor.name}: мгновенное убийство не сработало на {target.name}")
 
 
+def _build_effect(eff: dict, source_id) -> RuntimeEffect:
+    """Собрать ``RuntimeEffect`` из описания в данных способности.
+
+    Создаёт новый экземпляр при каждом вызове — важно для групповых способностей,
+    чтобы у каждой цели была своя «живая» длительность.
+    """
+    return RuntimeEffect(
+        target_type=eff["target_type"],
+        target=eff["target"],
+        modifier=int(eff.get("modifier", 0)),
+        duration=int(eff.get("duration", 0)),
+        source_type=eff.get("source_type", SourceType.SPELL.value),
+        source_id=source_id,
+        is_stackable=bool(eff.get("is_stackable", True)),
+        description=eff.get("description", ""),
+    )
+
+
 @action_handler(ActionType.APPLY_EFFECT)
 def _apply_effect(action: dict, ctx: AbilityContext) -> None:
     target = ctx.target or ctx.actor
-    eff = action["effect"]
-    target.add_temporary_effect(
-        RuntimeEffect(
-            target_type=eff["target_type"],
-            target=eff["target"],
-            modifier=int(eff.get("modifier", 0)),
-            duration=int(eff.get("duration", 0)),
-            source_type=eff.get("source_type", SourceType.SPELL.value),
-            source_id=ctx.actor.card_id,
-            is_stackable=bool(eff.get("is_stackable", True)),
-            description=eff.get("description", ""),
-        )
-    )
+    target.add_temporary_effect(_build_effect(action["effect"], ctx.actor.card_id))
     ctx.log.append(f"{ctx.actor.name}: способность вешает эффект на {target.name}")
+
+
+@action_handler(ActionType.BUFF_ALLIES)
+def _buff_allies(action: dict, ctx: AbilityContext) -> None:
+    """Ментальный бафф: навесить эффект на всех живых сопартийцев (без контеста)."""
+    combat = ctx.combat
+    if combat is None:
+        return
+    allies = [c for c in combat.members(ctx.actor.side) if not c.is_dying]
+    for ally in allies:
+        ally.add_temporary_effect(_build_effect(action["effect"], ctx.actor.card_id))
+    ctx.log.append(f"{ctx.actor.name}: воодушевляет союзников ({len(allies)})")
+
+
+@action_handler(ActionType.DEBUFF_ENEMIES)
+def _debuff_enemies(action: dict, ctx: AbilityContext) -> None:
+    """Ментальный дебафф: контест против каждого живого врага (§10).
+
+    На каждого врага — отдельный бросок ``mental_attack``; эффект вешается лишь
+    при успехе атакующего.
+    """
+    combat = ctx.combat
+    if combat is None:
+        return
+    enemies = [c for c in combat.opponents_of(ctx.actor) if not c.is_dying]
+    affected = 0
+    for enemy in enemies:
+        effect = _build_effect(action["effect"], ctx.actor.card_id)
+        if combat.mental_attack(ctx.actor, enemy, effect=effect).success:
+            affected += 1
+    ctx.log.append(
+        f"{ctx.actor.name}: деморализует врагов (поражено {affected}/{len(enemies)})"
+    )
 
 
 @action_handler(ActionType.SUMMON)
@@ -140,11 +179,13 @@ def fire_abilities(
     ctx: AbilityContext,
     *,
     target: Optional[Combatant] = None,
+    only_name: Optional[str] = None,
 ) -> list[str]:
-    """Запустить все способности владельца с данным триггером.
+    """Запустить способности владельца с данным триггером.
 
     Возвращает имена сработавших способностей. Учитывает ``once_per_combat``,
-    вероятность ``chance`` и условия ``condition``.
+    вероятность ``chance`` и условия ``condition``. ``only_name`` ограничивает
+    запуск одной способностью по имени (для ручной активации).
     """
     trigger_value = trigger.value if hasattr(trigger, "value") else trigger
     if target is not None:
@@ -153,6 +194,8 @@ def fire_abilities(
     fired: list[str] = []
     for spec in owner.abilities:
         if spec.trigger != trigger_value:
+            continue
+        if only_name is not None and spec.name != only_name:
             continue
         if spec.once_per_combat and spec.used:
             continue

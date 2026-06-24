@@ -442,3 +442,15 @@ class Combat:
     def trigger(self, actor: Combatant, trigger, target: Optional[Combatant] = None) -> list[str]:
         """Запустить способности участника по произвольному триггеру (напр. начало хода)."""
         return fire_abilities(actor, trigger, self._ctx(actor, target), target=target)
+
+    def activate_ability(
+        self, actor: Combatant, ability_name: Optional[str] = None, target: Optional[Combatant] = None
+    ) -> list[str]:
+        """Вручную активировать ACTIVE-способность участника (тратит ход)."""
+        return fire_abilities(
+            actor,
+            AbilityTrigger.ACTIVE,
+            self._ctx(actor, target),
+            target=target,
+            only_name=ability_name,
+        )

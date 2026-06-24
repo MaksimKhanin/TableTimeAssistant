@@ -95,6 +95,14 @@ class Encounter:
             combat.attempt_flee(actor)
             return
 
+        if kind is ActionKind.ACTIVATE_ABILITY:
+            target = combat.get(action.target_uid) if action.target_uid is not None else None
+            if not combat.activate_ability(actor, action.ability_name, target):
+                combat.log.append(
+                    f"{actor.name}: способность «{action.ability_name}» недоступна — ход впустую"
+                )
+            return
+
         if kind in (ActionKind.INTIMIDATE, ActionKind.NEGOTIATE):
             enemy_side = action.enemy_side or self._default_enemy_side(actor)
             if enemy_side is None:
