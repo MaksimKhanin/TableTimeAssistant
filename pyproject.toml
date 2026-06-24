@@ -12,7 +12,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+web = ["Flask>=3.0"]
+dev = ["pytest>=8", "Flask>=3.0"]
 
 [tool.setuptools.packages.find]
 include = ["grokhanika*"]

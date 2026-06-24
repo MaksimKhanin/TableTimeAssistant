@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Гроханика — мастерская</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">⚔️ Гроханика <span class="brand-sub">мастерская</span></div>
+    <nav class="modes">
+      <button class="mode-btn active" data-mode="home">🏠 Главная</button>
+      <button class="mode-btn" data-mode="admin">🛠️ Отладка / Админка</button>
+      <button class="mode-btn" data-mode="sim">⚔️ Имитация боя</button>
+    </nav>
+  </header>
+
+  <main id="app">
+    <!-- ───────── Главная ───────── -->
+    <section class="view" data-view="home">
+      <div class="hero">
+        <h1>Мастерская «Гроханики»</h1>
+        <p>Отладочный инструмент поверх игрового движка. Просматривайте сущности
+           мира, добавляйте новые и прогоняйте бои так, будто они идут в игре.</p>
+        <div class="big-buttons">
+          <button class="big-btn" data-goto="admin">
+            <span class="big-ico">🛠️</span>
+            <span class="big-title">Отладка / Админка</span>
+            <span class="big-desc">Карточки БД по категориям, фильтры, сортировки, добавление сущностей</span>
+          </button>
+          <button class="big-btn" data-goto="sim">
+            <span class="big-ico">⚔️</span>
+            <span class="big-title">Имитация боя</span>
+            <span class="big-desc">Соберите врагов и союзников (за NPC играет ИИ) и симулируйте сражение</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────── Админка ───────── -->
+    <section class="view hidden" data-view="admin">
+      <div class="admin-head">
+        <div class="cat-tabs" id="cat-tabs"></div>
+        <button class="add-btn" id="add-btn">➕ Добавить сущность</button>
+      </div>
+      <div class="toolbar" id="toolbar"></div>
+      <div class="card-grid" id="card-grid"></div>
+      <div class="empty hidden" id="empty-state">Ничего не найдено.</div>
+    </section>
+
+    <!-- ───────── Симуляция ───────── -->
+    <section class="view hidden" data-view="sim">
+      <div class="sim-setup">
+        <div class="roster-col" data-team="enemies">
+          <h3>👹 Враги</h3>
+          <div class="team-list" id="team-enemies"></div>
+        </div>
+        <div class="sim-center">
+          <div class="pool">
+            <h4>Доступные участники</h4>
+            <p class="hint">Кликните, чтобы добавить во врагов или союзников.</p>
+            <div class="pool-list" id="pool-list"></div>
+          </div>
+          <div class="sim-controls">
+            <label>Сид (для воспроизводимости):
+              <input type="number" id="sim-seed" placeholder="напр. 7">
+            </label>
+            <button class="sim-go" id="sim-go">▶ Симулировать бой</button>
+          </div>
+        </div>
+        <div class="roster-col" data-team="allies">
+          <h3>🛡️ Союзники <small>(ИИ играет за всех)</small></h3>
+          <div class="team-list" id="team-allies"></div>
+        </div>
+      </div>
+
+      <div class="sim-stage hidden" id="sim-stage">
+        <div class="stage-bar">
+          <div class="stage-side" id="stage-enemies"></div>
+          <div class="stage-vs">VS</div>
+          <div class="stage-side" id="stage-allies"></div>
+        </div>
+        <div class="stage-meta">
+          <span id="stage-round">Раунд —</span>
+          <div class="playback">
+            <button id="pb-prev">⏮</button>
+            <button id="pb-play">⏯ Авто</button>
+            <button id="pb-next">⏭</button>
+          </div>
+        </div>
+        <div class="battle-log" id="battle-log"></div>
+        <div class="outcome hidden" id="outcome"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ───────── Модалка формы ───────── -->
+  <div class="modal-backdrop hidden" id="modal">
+    <div class="modal">
+      <div class="modal-head">
+        <h2 id="modal-title">Новая сущность</h2>
+        <button class="modal-close" id="modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <label class="field">
+          <span class="field-label">Тип сущности</span>
+          <select id="form-type"></select>
+          <span class="field-hint" id="form-type-hint"></span>
+        </label>
+        <form id="entity-form" class="entity-form"></form>
+        <div class="form-error hidden" id="form-error"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn-secondary" id="form-cancel">Отмена</button>
+        <button class="btn-primary" id="form-submit">Создать</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────── Модалка карточки ───────── -->
+  <div class="modal-backdrop hidden" id="detail-modal">
+    <div class="modal modal-detail" id="detail-body"></div>
+  </div>
+
+  <div class="toast hidden" id="toast"></div>
+
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
