@@ -14,6 +14,14 @@ dependencies = [
 [project.optional-dependencies]
 web = ["Flask>=3.0"]
 dev = ["pytest>=8", "Flask>=3.0"]
+# Модуль текстового приключения с ИИ-ГМ: локальная LLM + локальный эмбеддер (RAG).
+# torch/transformers тяжёлые — ставится отдельно, в CI мокается.
+adventure = [
+    "Flask>=3.0",
+    "httpx>=0.27",
+    "numpy>=1.24",
+    "sentence-transformers>=2.2",
+]
 
 [tool.setuptools.packages.find]
 include = ["grokhanika*"]

@@ -24,6 +24,7 @@ from ..db.models import (
     Creature,
     Instrument,
     Item,
+    LoreEntry,
     Scroll,
     Skill,
     SpellBook,
@@ -166,6 +167,10 @@ def _type_fields(card: Card) -> dict:
             "price": card.price,
             "grants_skill": card.grants_skill.name if card.grants_skill else None,
         }
+    if isinstance(card, LoreEntry):
+        return {
+            "category": card.category,
+        }
     return {}
 
 
@@ -182,6 +187,7 @@ TYPE_LABELS = {
     CardType.SCROLL.value: "Свиток",
     CardType.INSTRUMENT.value: "Инструмент",
     CardType.SKILL.value: "Навык",
+    CardType.LORE.value: "Лор",
 }
 
 

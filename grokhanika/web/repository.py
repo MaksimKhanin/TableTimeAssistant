@@ -18,6 +18,7 @@ from ..db.models import (
     Creature,
     Instrument,
     Item,
+    LoreEntry,
     Scroll,
     Skill,
     SpellBook,
@@ -26,6 +27,20 @@ from ..db.models import (
 from ..enums import CardType
 from . import schema
 from .serialize import serialize_ability, serialize_card
+
+
+def _index_card_safe(session: Session, card: Card) -> None:
+    """Best-effort индексация карточки для RAG.
+
+    Если модуль приключения/эмбеддер недоступны (нет sentence-transformers и пр.) —
+    молча пропускаем: вектор досчитает ``scripts/reindex_embeddings``.
+    """
+    try:
+        from ..adventure import retrieval
+
+        retrieval.index_card(session, card, commit=True)
+    except Exception:  # noqa: BLE001 - индексация не должна ломать основной поток
+        session.rollback()
 
 # конструкторы карточек по типу (имена полей формы == имена колонок ORM)
 _MODELS: dict[str, type[Card]] = {
@@ -184,4 +199,72 @@ def create_card(session: Session, card_type: str, payload: dict) -> dict:
     card = model(**cleaned)
     session.add(card)
     session.commit()
+    _index_card_safe(session, card)  # сделать карточку доступной семантическому поиску
     return serialize_card(card, full=True)
+
+
+# ───────────────────────── лор-записи (CRUD для приключения) ─────────────────────────
+
+_LORE_CATEGORIES = ("location", "faction", "history", "custom")
+
+
+def list_lore(session: Session, *, category: Optional[str] = None) -> list[dict]:
+    """Список лор-записей, опционально по категории."""
+    stmt = select(LoreEntry)
+    if category and category != "all":
+        stmt = stmt.where(LoreEntry.category == category)
+    entries = session.execute(stmt.order_by(LoreEntry.name)).scalars().all()
+    return [serialize_card(e, full=True) for e in entries]
+
+
+def _clean_lore(payload: dict) -> dict:
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise CreateError({"name": "Укажите название"})
+    category = (payload.get("category") or "custom").strip()
+    if category not in _LORE_CATEGORIES:
+        category = "custom"
+    return {
+        "name": name,
+        "description": (payload.get("description") or "").strip(),
+        "category": category,
+    }
+
+
+def create_lore(session: Session, payload: dict) -> dict:
+    """Создать лор-запись и проиндексировать её."""
+    entry = LoreEntry(**_clean_lore(payload))
+    session.add(entry)
+    session.commit()
+    _index_card_safe(session, entry)
+    return serialize_card(entry, full=True)
+
+
+def update_lore(session: Session, lore_id: int, payload: dict) -> Optional[dict]:
+    """Отредактировать лор-запись и переиндексировать её. None — если не найдена."""
+    entry = session.get(LoreEntry, lore_id)
+    if entry is None:
+        return None
+    cleaned = _clean_lore(payload)
+    entry.name = cleaned["name"]
+    entry.description = cleaned["description"]
+    entry.category = cleaned["category"]
+    session.commit()
+    _index_card_safe(session, entry)
+    return serialize_card(entry, full=True)
+
+
+def delete_lore(session: Session, lore_id: int) -> bool:
+    """Удалить лор-запись и её эмбеддинг. True — если удалили."""
+    entry = session.get(LoreEntry, lore_id)
+    if entry is None:
+        return False
+    try:
+        from ..adventure import retrieval
+
+        retrieval.remove_entity(session, retrieval.ENTITY_LORE, lore_id, commit=False)
+    except Exception:  # noqa: BLE001
+        pass
+    session.delete(entry)
+    session.commit()
+    return True

@@ -20,6 +20,7 @@ class CardType(str, Enum):
     SCROLL = "scroll"
     INSTRUMENT = "instrument"
     SKILL = "skill"
+    LORE = "lore"  # лор-запись/локация (мир Гроханика) — для приключения/RAG
 
 
 class Stat(str, Enum):

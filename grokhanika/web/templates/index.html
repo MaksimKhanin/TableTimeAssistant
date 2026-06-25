@@ -13,6 +13,7 @@
       <button class="mode-btn active" data-mode="home">🏠 Главная</button>
       <button class="mode-btn" data-mode="admin">🛠️ Отладка / Админка</button>
       <button class="mode-btn" data-mode="sim">⚔️ Имитация боя</button>
+      <button class="mode-btn" data-mode="adv">📖 Приключение</button>
     </nav>
   </header>
 
@@ -33,6 +34,11 @@
             <span class="big-ico">⚔️</span>
             <span class="big-title">Имитация боя</span>
             <span class="big-desc">Соберите врагов и союзников (за NPC играет ИИ) и симулируйте сражение</span>
+          </button>
+          <button class="big-btn" data-goto="adv">
+            <span class="big-ico">📖</span>
+            <span class="big-title">Приключение</span>
+            <span class="big-desc">Текстовое приключение с ИИ-гейм-мастером: завязка, персонажи и живое повествование</span>
           </button>
         </div>
       </div>
@@ -150,6 +156,79 @@
         <div class="outcome hidden" id="ba-outcome"></div>
       </div>
     </section>
+
+    <!-- ───────── Приключение ───────── -->
+    <section class="view hidden" data-view="adv">
+      <!-- Сетап -->
+      <div class="adv-setup" id="adv-setup">
+        <div class="adv-setup-head">
+          <h2>📖 Новое приключение</h2>
+          <div class="adv-setup-actions">
+            <button class="btn-secondary" id="adv-resume-btn">↩ Продолжить</button>
+            <button class="btn-secondary" id="adv-lore-btn">📜 Лор-база</button>
+            <button class="btn-secondary" id="adv-settings-btn">⚙️ Настройки ИИ</button>
+          </div>
+        </div>
+
+        <div class="adv-form">
+          <div class="field">
+            <span class="field-label">Тип приключения</span>
+            <div class="adv-presets" id="adv-presets"></div>
+            <input class="adv-custom-type hidden" id="adv-type-custom" placeholder="Опишите свой тип приключения">
+          </div>
+          <label class="field">
+            <span class="field-label">Завязка / описание (свободно)</span>
+            <textarea id="adv-desc" rows="4" placeholder="Где начинается приключение, что происходит, чего ждут герои…"></textarea>
+          </label>
+          <label class="field">
+            <span class="field-label">Главная цель</span>
+            <textarea id="adv-goal" rows="2" placeholder="К чему стремится партия"></textarea>
+          </label>
+          <div class="field">
+            <span class="field-label">Персонажи партии</span>
+            <p class="hint">Кликните, чтобы добавить/убрать героя.</p>
+            <div class="adv-party-pick" id="adv-party-pick"></div>
+          </div>
+          <button class="btn-primary adv-start-btn" id="adv-start">▶ Начать приключение</button>
+        </div>
+
+        <div class="adv-resume hidden" id="adv-resume">
+          <h3>Сохранённые приключения</h3>
+          <div class="adv-resume-list" id="adv-resume-list"></div>
+        </div>
+      </div>
+
+      <!-- Игра -->
+      <div class="adv-play hidden" id="adv-play">
+        <div class="adv-main">
+          <div class="adv-goalbar" id="adv-goalbar"></div>
+          <div class="adv-chat" id="adv-chat"></div>
+          <div class="adv-input">
+            <select id="adv-speaker" title="От лица какого персонажа вы говорите"></select>
+            <textarea id="adv-text" rows="2" placeholder="Что вы делаете или говорите?"></textarea>
+            <button class="btn-primary" id="adv-send">Отправить</button>
+          </div>
+        </div>
+        <aside class="adv-scene">
+          <div class="adv-scene-head">
+            <h3>🎬 Сцена</h3>
+            <button class="btn-secondary adv-exit-btn" id="adv-exit">⟵ К списку</button>
+          </div>
+          <div class="adv-scene-section">
+            <div class="adv-scene-title">Локация</div>
+            <div id="adv-scene-loc" class="adv-scene-loc"><span class="muted">—</span></div>
+          </div>
+          <div class="adv-scene-section">
+            <div class="adv-scene-title">Действующие лица</div>
+            <div id="adv-scene-npcs" class="adv-scene-cards"></div>
+          </div>
+          <div class="adv-scene-section">
+            <div class="adv-scene-title">Предметы</div>
+            <div id="adv-scene-items" class="adv-scene-cards"></div>
+          </div>
+        </aside>
+      </div>
+    </section>
   </main>
 
   <!-- ───────── Модалка формы ───────── -->
@@ -178,6 +257,111 @@
   <!-- ───────── Модалка карточки ───────── -->
   <div class="modal-backdrop hidden" id="detail-modal">
     <div class="modal modal-detail" id="detail-body"></div>
+  </div>
+
+  <!-- ───────── Модалка настроек ИИ ───────── -->
+  <div class="modal-backdrop hidden" id="ai-modal">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>⚙️ Настройки ИИ</h2>
+        <button class="modal-close" id="ai-close">✕</button>
+      </div>
+      <div class="modal-body" id="ai-body">
+        <p class="hint">Локальные OSS-модели через OpenAI-совместимый эндпоинт (Ollama, vLLM, llama.cpp…).
+           Повествователь и системная модель настраиваются раздельно.</p>
+
+        <fieldset class="ai-group">
+          <legend>🎙 Повествователь (ГМ)</legend>
+          <label class="field"><span class="field-label">Эндпоинт (base_url)</span>
+            <input id="ai-narrator-base_url" placeholder="http://localhost:11434/v1"></label>
+          <label class="field"><span class="field-label">Модель</span>
+            <input id="ai-narrator-model" placeholder="qwen2.5:7b-instruct"></label>
+          <label class="field"><span class="field-label">API-ключ (опц.)</span>
+            <input id="ai-narrator-api_key" placeholder="(пусто для локального)"></label>
+          <label class="field"><span class="field-label">Температура</span>
+            <input id="ai-narrator-temperature" type="number" step="0.05" min="0" max="2"></label>
+          <div class="ai-status" id="ai-narrator-status"></div>
+        </fieldset>
+
+        <fieldset class="ai-group">
+          <legend>🧠 Системная модель (интент/компактинг)</legend>
+          <label class="field"><span class="field-label">Эндпоинт (base_url)</span>
+            <input id="ai-system-base_url" placeholder="http://localhost:11434/v1"></label>
+          <label class="field"><span class="field-label">Модель</span>
+            <input id="ai-system-model" placeholder="qwen2.5:7b-instruct"></label>
+          <label class="field"><span class="field-label">API-ключ (опц.)</span>
+            <input id="ai-system-api_key" placeholder="(пусто для локального)"></label>
+          <label class="field"><span class="field-label">Температура</span>
+            <input id="ai-system-temperature" type="number" step="0.05" min="0" max="2"></label>
+          <div class="ai-status" id="ai-system-status"></div>
+        </fieldset>
+
+        <fieldset class="ai-group">
+          <legend>🔎 Эмбеддер (RAG)</legend>
+          <label class="field"><span class="field-label">Модель sentence-transformers</span>
+            <input id="ai-embedder-model" placeholder="intfloat/multilingual-e5-base"></label>
+        </fieldset>
+
+        <fieldset class="ai-group">
+          <legend>📚 Контекст</legend>
+          <label class="field"><span class="field-label">Окно (сообщений)</span>
+            <input id="ai-memory-window_messages" type="number" min="2"></label>
+          <label class="field"><span class="field-label">Порог компактинга</span>
+            <input id="ai-memory-compact_threshold" type="number" min="2"></label>
+          <label class="field"><span class="field-label">Эпизодических воспоминаний (top-k)</span>
+            <input id="ai-memory-episodic_top_k" type="number" min="0"></label>
+          <label class="field"><span class="field-label">RAG-результатов (top-k)</span>
+            <input id="ai-memory-retrieval_top_k" type="number" min="1"></label>
+        </fieldset>
+      </div>
+      <div class="modal-foot">
+        <button class="btn-secondary" id="ai-test">🔌 Проверить</button>
+        <button class="btn-primary" id="ai-save">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────── Модалка лор-базы ───────── -->
+  <div class="modal-backdrop hidden" id="lore-modal">
+    <div class="modal modal-wide">
+      <div class="modal-head">
+        <h2>📜 Лор-база</h2>
+        <button class="modal-close" id="lore-close">✕</button>
+      </div>
+      <div class="modal-body lore-body">
+        <div class="lore-list-col">
+          <div class="lore-filter">
+            <select id="lore-filter">
+              <option value="all">Все категории</option>
+              <option value="location">Локации</option>
+              <option value="faction">Фракции</option>
+              <option value="history">История</option>
+              <option value="custom">Прочее</option>
+            </select>
+            <button class="btn-secondary" id="lore-new">➕ Новый факт</button>
+          </div>
+          <div class="lore-list" id="lore-list"></div>
+        </div>
+        <div class="lore-edit-col">
+          <input type="hidden" id="lore-edit-id">
+          <label class="field"><span class="field-label">Название</span>
+            <input id="lore-edit-name" placeholder="напр. Город Импродор"></label>
+          <label class="field"><span class="field-label">Категория</span>
+            <select id="lore-edit-category">
+              <option value="location">Локация</option>
+              <option value="faction">Фракция</option>
+              <option value="history">История</option>
+              <option value="custom">Прочее</option>
+            </select></label>
+          <label class="field"><span class="field-label">Текст факта</span>
+            <textarea id="lore-edit-desc" rows="8" placeholder="Описание, которое ИИ-ГМ будет использовать как факт мира"></textarea></label>
+          <div class="lore-edit-actions">
+            <button class="btn-secondary" id="lore-edit-clear">Очистить</button>
+            <button class="btn-primary" id="lore-edit-save">Сохранить факт</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ───────── Попап выбора действия ───────── -->

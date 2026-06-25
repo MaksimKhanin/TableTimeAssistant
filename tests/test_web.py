@@ -40,9 +40,11 @@ def test_npc_category_excludes_players(client):
     data = client.get("/api/cards?category=npc").get_json()
     for c in data["items"]:
         assert not (c["card_type"] == "character" and c["fields"].get("is_player"))
-    # фильтр по существам
+    # фильтр по существам (демо-монстры + generic-NPC для приключения)
     creatures = client.get("/api/cards?category=npc&filter=creature").get_json()
-    assert {c["name"] for c in creatures["items"]} == {"Гоблин", "Теневой убийца", "Некромант"}
+    names = {c["name"] for c in creatures["items"]}
+    assert {"Гоблин", "Теневой убийца", "Некромант"} <= names
+    assert {"Горожанин", "Городской стражник", "Трактирщик"} <= names
 
 
 def test_items_filter_and_sort_by_price(client):

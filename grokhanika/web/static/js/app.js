@@ -42,6 +42,7 @@ function showMode(mode) {
   $$(".view").forEach(v => v.classList.toggle("hidden", v.dataset.view !== mode));
   if (mode === "admin" && !state.categories) initAdmin();
   if (mode === "sim" && !state.roster) initSim();
+  if (mode === "adv" && !advState.ready) initAdventure();
 }
 
 document.addEventListener("click", (e) => {
@@ -1299,3 +1300,411 @@ $("#pb-play").onclick = togglePlay;
 $$(".modal-backdrop").forEach(m => m.onclick = (e) => { if (e.target === m) m.classList.add("hidden"); });
 
 showMode("home");
+
+// ═════════════════════════ ПРИКЛЮЧЕНИЕ (ИИ-ГМ) ═════════════════════════
+
+const advState = {
+  ready: false, bound: false, presets: [], heroes: [],
+  type: "custom", selectedIds: new Set(),
+  session: null, streaming: false, loreEditId: null,
+};
+
+const advEsc = (s) => String(s == null ? "" : s)
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+async function initAdventure() {
+  advState.ready = true;
+  if (!advState.bound) { bindAdventure(); advState.bound = true; }
+  advState.presets = await API.get("/api/adventure/presets");
+  const roster = await API.get("/api/roster");
+  advState.heroes = roster.heroes || [];
+  renderPresets();
+  renderPartyPick();
+  showAdvScreen("setup");
+}
+
+function showAdvScreen(which) {
+  $("#adv-setup").classList.toggle("hidden", which !== "setup");
+  $("#adv-play").classList.toggle("hidden", which !== "play");
+}
+
+function renderPresets() {
+  const box = $("#adv-presets"); box.innerHTML = "";
+  advState.presets.forEach((p, i) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "adv-preset" + ((advState.type === p.id || (i === 0 && advState.type === "custom" && p.id === "custom")) ? " active" : "");
+    b.innerHTML = `<b>${advEsc(p.label)}</b><span>${advEsc(p.description)}</span>`;
+    b.onclick = () => {
+      advState.type = p.id;
+      $$("#adv-presets .adv-preset").forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+      $("#adv-type-custom").classList.toggle("hidden", p.id !== "custom");
+    };
+    box.appendChild(b);
+  });
+}
+
+function renderPartyPick() {
+  const box = $("#adv-party-pick"); box.innerHTML = "";
+  advState.heroes.forEach(h => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "adv-hero" + (advState.selectedIds.has(h.id) ? " active" : "");
+    const ico = TYPE_ICON[h.card_type] || "🧝";
+    b.innerHTML = `<span class="adv-hero-ico">${ico}</span><span>${advEsc(h.name)}</span>`;
+    b.onclick = () => {
+      if (advState.selectedIds.has(h.id)) advState.selectedIds.delete(h.id);
+      else advState.selectedIds.add(h.id);
+      b.classList.toggle("active");
+    };
+    box.appendChild(b);
+  });
+}
+
+async function advStart() {
+  const ids = [...advState.selectedIds];
+  if (!ids.length) { toast("Выберите хотя бы одного персонажа", true); return; }
+  let type = advState.type;
+  if (type === "custom") type = $("#adv-type-custom").value.trim() || "custom";
+  const body = {
+    description: $("#adv-desc").value.trim(),
+    goal: $("#adv-goal").value.trim(),
+    adventure_type: type,
+    character_ids: ids,
+  };
+  const res = await API.post("/api/adventure/start", body);
+  if (!res.ok) { toast(res.data.error || "Не удалось начать", true); return; }
+  advState.session = res.data.session;
+  openPlay(advState.session, []);
+  await streamGM(`/api/adventure/${advState.session.id}/intro`, { method: "GET" });
+}
+
+function openPlay(session, messages) {
+  advState.session = session;
+  $("#adv-goalbar").innerHTML =
+    `<span class="adv-goal-type">${advEsc(session.adventure_type)}</span>` +
+    (session.goal ? ` <span class="adv-goal-text">🎯 ${advEsc(session.goal)}</span>` : "");
+  // выбор «от чьего лица»
+  const sel = $("#adv-speaker"); sel.innerHTML = "";
+  (session.party || []).forEach(c => {
+    const o = document.createElement("option");
+    o.value = c.id; o.textContent = c.name; sel.appendChild(o);
+  });
+  $("#adv-chat").innerHTML = "";
+  (messages || []).forEach(m => {
+    if (m.role === "gm") addBubble("gm", null, m.content);
+    else if (m.role === "player") addBubble("player", m.speaker, m.content);
+  });
+  showAdvScreen("play");
+}
+
+function addBubble(role, speaker, text) {
+  const chat = $("#adv-chat");
+  const div = document.createElement("div");
+  div.className = "adv-msg adv-" + role;
+  if (role === "player") {
+    div.innerHTML = `<div class="adv-msg-who">${advEsc(speaker || "Игрок")}</div><div class="adv-msg-text"></div>`;
+  } else {
+    div.innerHTML = `<div class="adv-msg-who">🎙 Гейм-мастер</div><div class="adv-msg-text"></div>`;
+  }
+  const textEl = div.querySelector(".adv-msg-text");
+  textEl.textContent = text || "";
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  return { div, textEl };
+}
+
+function setIntentTag(bubble, intent) {
+  const tags = [];
+  if (intent.combat_initiation) tags.push("⚔️ бой");
+  if (intent.requires_roll) tags.push("🎲 " + (intent.roll_type || "проверка"));
+  if (intent.leaves_location) tags.push("🚶 уход");
+  if (!tags.length) return;
+  const tag = document.createElement("div");
+  tag.className = "adv-intent-tag";
+  tag.textContent = tags.join(" · ");
+  bubble.div.querySelector(".adv-msg-who").appendChild(tag);
+}
+
+async function streamGM(url, opts) {
+  if (advState.streaming) return;
+  advState.streaming = true;
+  $("#adv-send").disabled = true;
+  const bubble = addBubble("gm", null, "");
+  bubble.textEl.classList.add("adv-typing");
+  try {
+    const fetchOpts = { method: opts.method };
+    if (opts.body) {
+      fetchOpts.headers = { "Content-Type": "application/json" };
+      fetchOpts.body = JSON.stringify(opts.body);
+    }
+    await streamSSE(url, fetchOpts, (ev) => {
+      if (ev.type === "delta") {
+        bubble.textEl.textContent += ev.text;
+        $("#adv-chat").scrollTop = $("#adv-chat").scrollHeight;
+      } else if (ev.type === "intent") {
+        setIntentTag(bubble, ev.intent);
+      } else if (ev.type === "scene") {
+        renderScene(ev.scene);
+      } else if (ev.type === "error") {
+        toast("ГМ: " + ev.error, true);
+        bubble.textEl.textContent += "\n[" + ev.error + "]";
+      }
+    });
+  } catch (e) {
+    toast("Поток прерван: " + e.message, true);
+  } finally {
+    bubble.textEl.classList.remove("adv-typing");
+    advState.streaming = false;
+    $("#adv-send").disabled = false;
+  }
+}
+
+async function streamSSE(url, opts, onEvent) {
+  const r = await fetch(url, opts);
+  if (!r.ok || !r.body) {
+    let msg = "HTTP " + r.status;
+    try { const d = await r.json(); msg = d.error || msg; } catch (e) {}
+    throw new Error(msg);
+  }
+  const reader = r.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf("\n\n")) >= 0) {
+      const frame = buf.slice(0, idx); buf = buf.slice(idx + 2);
+      const line = frame.split("\n").find(l => l.startsWith("data:"));
+      if (line) { try { onEvent(JSON.parse(line.slice(5).trim())); } catch (e) {} }
+    }
+  }
+}
+
+async function advSend() {
+  const ta = $("#adv-text");
+  const text = ta.value.trim();
+  if (!text || advState.streaming || !advState.session) return;
+  const sel = $("#adv-speaker");
+  const speakerId = sel.value ? Number(sel.value) : null;
+  const speakerName = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : "Игрок";
+  addBubble("player", speakerName, text);
+  ta.value = "";
+  await streamGM(`/api/adventure/${advState.session.id}/message`,
+    { method: "POST", body: { character_id: speakerId, text } });
+}
+
+function sceneCard(card) {
+  const div = document.createElement("div");
+  div.className = "adv-scene-card";
+  const ico = TYPE_ICON[card.card_type] || "❔";
+  const style = card.image_url
+    ? `background-image:url('${card.image_url}');background-size:cover;background-position:center`
+    : `background:${ART_BG[card.card_type] || "#2c2a3a"}`;
+  div.innerHTML = `<div class="adv-sc-art" style="${style}">${card.image_url ? "" : ico}</div>` +
+    `<div class="adv-sc-name">${advEsc(card.name)}</div>`;
+  div.title = card.description || card.name;
+  return div;
+}
+
+function renderScene(scene) {
+  if (!scene) return;
+  const loc = $("#adv-scene-loc");
+  loc.innerHTML = "";
+  if (scene.location) loc.appendChild(sceneCard(scene.location));
+  else loc.innerHTML = '<span class="muted">—</span>';
+  const npcs = $("#adv-scene-npcs"); npcs.innerHTML = "";
+  (scene.npcs || []).forEach(c => npcs.appendChild(sceneCard(c)));
+  if (!scene.npcs || !scene.npcs.length) npcs.innerHTML = '<span class="muted">—</span>';
+  const items = $("#adv-scene-items"); items.innerHTML = "";
+  (scene.items || []).forEach(c => items.appendChild(sceneCard(c)));
+  if (!scene.items || !scene.items.length) items.innerHTML = '<span class="muted">—</span>';
+}
+
+// ── продолжить (список сессий) ──
+
+async function openResume() {
+  const list = await API.get("/api/adventure/list");
+  const box = $("#adv-resume-list"); box.innerHTML = "";
+  $("#adv-resume").classList.remove("hidden");
+  if (!list.length) { box.innerHTML = '<p class="hint">Сохранённых приключений пока нет.</p>'; return; }
+  list.forEach(a => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "adv-resume-item";
+    const party = (a.party || []).map(c => c.name).join(", ");
+    b.innerHTML = `<b>${advEsc(a.title)}</b><span>${advEsc(a.adventure_type)} · ${advEsc(a.status)}</span>` +
+      `<span class="muted">${advEsc(party)}</span>`;
+    b.onclick = () => loadAdventure(a.id);
+    box.appendChild(b);
+  });
+}
+
+async function loadAdventure(id) {
+  const data = await API.get(`/api/adventure/${id}`);
+  if (data.error) { toast(data.error, true); return; }
+  openPlay(data, data.messages);
+  renderScene(data.scene);
+}
+
+// ── настройки ИИ ──
+
+const AI_FIELDS = {
+  narrator: ["base_url", "model", "api_key", "temperature"],
+  system: ["base_url", "model", "api_key", "temperature"],
+  embedder: ["model"],
+  memory: ["window_messages", "compact_threshold", "episodic_top_k", "retrieval_top_k"],
+};
+
+async function openSettings() {
+  const cfg = await API.get("/api/adventure/settings");
+  for (const [sec, fields] of Object.entries(AI_FIELDS)) {
+    fields.forEach(f => {
+      const el = $(`#ai-${sec}-${f}`);
+      if (el && cfg[sec] && cfg[sec][f] != null) el.value = cfg[sec][f];
+    });
+  }
+  $("#ai-narrator-status").textContent = "";
+  $("#ai-system-status").textContent = "";
+  $("#ai-modal").classList.remove("hidden");
+}
+
+function collectSettings() {
+  const out = {};
+  for (const [sec, fields] of Object.entries(AI_FIELDS)) {
+    out[sec] = {};
+    fields.forEach(f => {
+      const el = $(`#ai-${sec}-${f}`);
+      if (!el) return;
+      let v = el.value;
+      if (el.type === "number" && v !== "") v = Number(v);
+      out[sec][f] = v;
+    });
+  }
+  return out;
+}
+
+async function saveSettings() {
+  const r = await fetch("/api/adventure/settings", {
+    method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(collectSettings()),
+  });
+  if (!r.ok) { toast("Не удалось сохранить настройки", true); return; }
+  toast("Настройки сохранены");
+  $("#ai-modal").classList.add("hidden");
+}
+
+async function testSettings() {
+  const body = collectSettings();
+  $("#ai-narrator-status").textContent = "проверка…";
+  $("#ai-system-status").textContent = "проверка…";
+  const r = await fetch("/api/adventure/settings/test", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json();
+  ["narrator", "system"].forEach(role => {
+    const el = $(`#ai-${role}-status`);
+    const res = data[role] || {};
+    el.textContent = res.ok ? `✓ доступно (${res.model || ""})` : `✗ ${res.error || ("статус " + res.status)}`;
+    el.className = "ai-status " + (res.ok ? "ok" : "err");
+  });
+}
+
+// ── лор-база ──
+
+async function openLore() {
+  loreClear();
+  await loreReload();
+  $("#lore-modal").classList.remove("hidden");
+}
+
+async function loreReload() {
+  const cat = $("#lore-filter").value;
+  const items = await API.get(`/api/lore?category=${encodeURIComponent(cat)}`);
+  const box = $("#lore-list"); box.innerHTML = "";
+  if (!items.length) { box.innerHTML = '<p class="hint">Пусто.</p>'; return; }
+  items.forEach(it => {
+    const div = document.createElement("div");
+    div.className = "lore-item";
+    const cat = (it.fields && it.fields.category) || "custom";
+    div.innerHTML = `<div class="lore-item-main"><b>${advEsc(it.name)}</b>` +
+      `<span class="lore-cat">${advEsc(cat)}</span>` +
+      `<p>${advEsc((it.description || "").slice(0, 140))}</p></div>` +
+      `<div class="lore-item-actions">` +
+      `<button class="lore-edit" title="Редактировать">✎</button>` +
+      `<button class="lore-del" title="Удалить">🗑</button></div>`;
+    div.querySelector(".lore-edit").onclick = () => loreEdit(it);
+    div.querySelector(".lore-del").onclick = () => loreDelete(it.id);
+    box.appendChild(div);
+  });
+}
+
+function loreEdit(it) {
+  advState.loreEditId = it.id;
+  $("#lore-edit-id").value = it.id;
+  $("#lore-edit-name").value = it.name || "";
+  $("#lore-edit-category").value = (it.fields && it.fields.category) || "custom";
+  $("#lore-edit-desc").value = it.description || "";
+}
+
+function loreClear() {
+  advState.loreEditId = null;
+  $("#lore-edit-id").value = "";
+  $("#lore-edit-name").value = "";
+  $("#lore-edit-category").value = "location";
+  $("#lore-edit-desc").value = "";
+}
+
+async function loreSave() {
+  const body = {
+    name: $("#lore-edit-name").value.trim(),
+    category: $("#lore-edit-category").value,
+    description: $("#lore-edit-desc").value.trim(),
+  };
+  if (!body.name) { toast("Укажите название", true); return; }
+  const id = advState.loreEditId;
+  const url = id ? `/api/lore/${id}` : "/api/lore";
+  const r = await fetch(url, {
+    method: id ? "PUT" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    toast((d.errors && Object.values(d.errors)[0]) || d.error || "Ошибка", true);
+    return;
+  }
+  toast(id ? "Факт обновлён" : "Факт добавлен");
+  loreClear();
+  loreReload();
+}
+
+async function loreDelete(id) {
+  const r = await fetch(`/api/lore/${id}`, { method: "DELETE" });
+  if (r.ok) { toast("Удалено"); if (advState.loreEditId === id) loreClear(); loreReload(); }
+}
+
+function bindAdventure() {
+  $("#adv-start").onclick = advStart;
+  $("#adv-send").onclick = advSend;
+  $("#adv-text").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); advSend(); }
+  });
+  $("#adv-exit").onclick = () => { showAdvScreen("setup"); $("#adv-resume").classList.add("hidden"); };
+  $("#adv-resume-btn").onclick = openResume;
+  $("#adv-settings-btn").onclick = openSettings;
+  $("#adv-lore-btn").onclick = openLore;
+  // настройки
+  $("#ai-close").onclick = () => $("#ai-modal").classList.add("hidden");
+  $("#ai-save").onclick = saveSettings;
+  $("#ai-test").onclick = testSettings;
+  // лор
+  $("#lore-close").onclick = () => $("#lore-modal").classList.add("hidden");
+  $("#lore-filter").onchange = loreReload;
+  $("#lore-new").onclick = loreClear;
+  $("#lore-edit-save").onclick = loreSave;
+  $("#lore-edit-clear").onclick = loreClear;
+}

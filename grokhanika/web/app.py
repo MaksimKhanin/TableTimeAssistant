@@ -15,7 +15,6 @@ from sqlalchemy import select
 from ..db import init_db, make_engine, make_session_factory, seed_all
 from ..db.models import Card
 from .api import api
-
 DEFAULT_WEB_DB_URL = "sqlite:///grokhanika.db"
 
 
@@ -63,6 +62,11 @@ def create_app(
             session.close()
 
     app.register_blueprint(api)
+
+    # модуль текстового приключения (ИИ-ГМ): отдельный blueprint с тем же /api
+    from ..adventure.adventure_api import adventure_api
+
+    app.register_blueprint(adventure_api)
 
     @app.route("/")
     def index():

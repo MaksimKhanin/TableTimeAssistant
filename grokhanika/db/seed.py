@@ -22,6 +22,7 @@ from .models import (
     Effect,
     Instrument,
     Item,
+    LoreEntry,
     Skill,
     SpellBook,
     Weapon,
@@ -304,6 +305,63 @@ def seed_all(session) -> dict:
                 actions=[{"type": ActionType.INSTAKILL.value, "chance": 1.0}],
             )
         ],
+    )
+
+    # ───────── неигровые NPC для приключения (можно «закрепить» в сцене) ─────────
+    cat["npc_citizen"] = Creature(
+        name="Горожанин", description="Обычный житель города: торговец, ремесленник или зевака. "
+        "Знает местные слухи, цены и дорогу до ближайших мест.",
+        is_sentient=True, hp=6, dexterity=3, phys_defense=8, mag_defense=2, mental_defense=5,
+        phys_damage_dice="1d4", strength=3, charisma=4, wisdom=3,
+    )
+    cat["npc_guard"] = Creature(
+        name="Городской стражник", description="Караульный у ворот и на площадях. "
+        "Следит за порядком, проверяет пришлых, может задержать за нарушение.",
+        is_sentient=True, hp=14, dexterity=5, phys_defense=12, mag_defense=3, mental_defense=7,
+        phys_damage_dice="1d8", strength=8, charisma=4, wisdom=4,
+    )
+    cat["npc_innkeeper"] = Creature(
+        name="Трактирщик", description="Хозяин таверны: наливает эль, сдаёт комнаты и охотно "
+        "делится новостями и сплетнями за пару монет.",
+        is_sentient=True, hp=8, dexterity=3, phys_defense=9, mag_defense=2, mental_defense=6,
+        phys_damage_dice="1d4", strength=4, charisma=7, wisdom=5,
+    )
+
+    # ───────── стартовый лор мира Гроханика (для RAG / ИИ-ГМ) ─────────
+    cat["lore_world"] = LoreEntry(
+        name="Мир Гроханика", category="history",
+        description="Гроханика — суровый фэнтезийный край разрозненных городов-государств, "
+        "тёмных лесов и древних руин. После падения Старой Короны земли держатся на торговых "
+        "союзах, наёмных отрядах и хрупких перемириях между фракциями.",
+    )
+    cat["lore_improdor"] = LoreEntry(
+        name="Импродор", category="location",
+        description="Импродор — укреплённый торговый город на перекрёстке трактов, известный "
+        "оружейными мастерскими и крепкой городской стражей. Здесь куётся легендарный «Защитник "
+        "Импродора». Рынок шумит днём, а в тавернах у стен заключаются ночные сделки.",
+    )
+    cat["lore_velg"] = LoreEntry(
+        name="Деревня Вельг", category="location",
+        description="Вельг — небольшая деревня на опушке Чернолесья. Живёт пашней и охотой, "
+        "страдает от набегов гоблинов и поборов разбойников. Староста ищет защитников для путников "
+        "и караванов.",
+    )
+    cat["lore_chernoles"] = LoreEntry(
+        name="Чернолесье", category="location",
+        description="Чернолесье — густой древний лес к северу от трактов. Полнится волками, "
+        "гоблинскими стоянками и слухами о некроманте, поднимающем мёртвых среди старых курганов.",
+    )
+    cat["lore_guild"] = LoreEntry(
+        name="Гильдия Серебряного Тракта", category="faction",
+        description="Купеческая гильдия, контролирующая торговые пути между городами. Нанимает "
+        "отряды для охраны караванов, щедро платит за расчистку дорог от разбойников и тварей, но "
+        "не прощает срыва контрактов.",
+    )
+    cat["lore_curse"] = LoreEntry(
+        name="Проклятие Старых Курганов", category="history",
+        description="Древнее поверье: курганы павших королей хранят сокровища, но потревоженные "
+        "мертвецы встают на защиту. Некроманты Чернолесья, по слухам, научились пробуждать их и "
+        "вести за собой.",
     )
 
     session.add_all(list(cat.values()))
