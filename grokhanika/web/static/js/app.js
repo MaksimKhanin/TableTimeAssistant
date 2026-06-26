@@ -12,6 +12,10 @@ const API = {
     });
     return { ok: r.ok, status: r.status, data: await r.json() };
   },
+  async delete(url) {
+    const r = await fetch(url, { method: "DELETE" });
+    return { ok: r.ok, status: r.status };
+  },
 };
 
 // эмодзи-заглушка арта по типу карточки (если нет картинки)
@@ -243,6 +247,7 @@ function showDetail(card) {
     rows.push(`<div class="k">Способности</div><div>${card.abilities.map(esc).join(", ")}</div>`);
   }
   $("#detail-body").innerHTML = `
+    <button class="modal-close detail-close-btn" id="detail-close">✕</button>
     <div class="detail-art" style="${artStyle(card)}">${icon}
       ${card.is_unique ? '<span class="badge-unique">уник.</span>' : ""}</div>
     <div class="detail-content">
@@ -250,7 +255,21 @@ function showDetail(card) {
       <h2>${esc(card.name)}</h2>
       ${card.description ? `<p class="desc">${esc(card.description)}</p>` : ""}
       <div class="kv">${rows.join("")}</div>
+    </div>
+    <div class="detail-foot">
+      <button class="btn-danger" id="detail-delete">🗑 Удалить</button>
     </div>`;
+  $("#detail-close").onclick = () => closeModal("#detail-modal");
+  $("#detail-delete").onclick = async () => {
+    if (!confirm(`Удалить «${esc(card.name)}»? Это действие необратимо.`)) return;
+    const { ok, status } = await API.delete(`/api/cards/${card.id}`);
+    if (status === 204 || ok) {
+      closeModal("#detail-modal");
+      loadCards();
+    } else {
+      alert("Не удалось удалить: возможно, на эту карточку ссылаются другие (например, она экипирована).");
+    }
+  };
   openModal("#detail-modal");
 }
 

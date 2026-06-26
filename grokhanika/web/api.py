@@ -67,6 +67,18 @@ def forms():
     return jsonify(payload)
 
 
+@api.delete("/cards/<int:card_id>")
+def delete_card(card_id: int):
+    """Удалить карточку. 404 если не найдена, 409 если на неё ссылаются другие карточки."""
+    try:
+        found = repository.delete_card(_session(), card_id)
+    except Exception as exc:
+        return jsonify({"error": f"Невозможно удалить: {exc}"}), 409
+    if not found:
+        return jsonify({"error": "карточка не найдена"}), 404
+    return "", 204
+
+
 @api.post("/cards")
 def create_card():
     """Создать карточку из данных формы. 400 + {errors} при невалидных данных."""

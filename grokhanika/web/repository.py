@@ -164,6 +164,16 @@ class CreateError(Exception):
         self.errors = errors
 
 
+def delete_card(session: Session, card_id: int) -> bool:
+    """Удалить карточку по id. Возвращает True если удалена, False если не найдена."""
+    card = session.get(Card, card_id)
+    if card is None:
+        return False
+    session.delete(card)
+    session.commit()
+    return True
+
+
 def create_card(session: Session, card_type: str, payload: dict) -> dict:
     """Создать карточку из данных формы. Бросает :class:`CreateError`."""
     cleaned, errors = schema.validate_payload(card_type, payload)
