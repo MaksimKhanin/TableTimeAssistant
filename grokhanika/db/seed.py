@@ -73,25 +73,33 @@ def seed_all(session) -> dict:
     cat: dict = {}
 
     # ───────── оружие (§14) ─────────
-    cat["dagger"] = Weapon(name="Кинжал", damage_dice="1d6", price=5)
+    cat["dagger"] = Weapon(
+        name="Кинжал", description="Лёгкий клинок для скрытного удара — прост в обращении и смертоносен вблизи.",
+        damage_dice="1d6", price=5,
+    )
     cat["short_sword"] = Weapon(
-        name="Короткий меч", damage_dice="1d8", str_requirement=5, price=10,
+        name="Короткий меч", description="Надёжный клинок на все случаи. Чуть тяжелее кинжала, немного сковывает реакцию.",
+        damage_dice="1d8", str_requirement=5, price=10,
         effects=[_stat_eff(EffectTarget.DEXTERITY, -1, SourceType.WEAPON, ActivationSource.EQUIPPED_WEAPON, "Короткий меч: DEX -1")],
     )
     cat["greataxe"] = Weapon(
-        name="Двуручный топор", damage_dice="1d10", str_requirement=7, price=8,
+        name="Двуручный топор", description="Огромный двуручный топор, сносящий врага с ног. Требует богатырской силы.",
+        damage_dice="1d10", str_requirement=7, price=8,
         effects=[_stat_eff(EffectTarget.DEXTERITY, -2, SourceType.WEAPON, ActivationSource.EQUIPPED_WEAPON, "Двуручный топор: DEX -2")],
     )
     cat["staff"] = Weapon(
-        name="Посох", damage_dice="1d4", price=5,
+        name="Посох", description="Деревянный жезл мага — усиливает мудрость и служит оружием ближнего боя.",
+        damage_dice="1d4", price=5,
         effects=[_stat_eff(EffectTarget.WISDOM, 2, SourceType.WEAPON, ActivationSource.EQUIPPED_WEAPON, "Посох: WIS +2")],
     )
     cat["bow"] = Weapon(
-        name="Лук", damage_dice="1d8", dex_requirement=7, price=8, is_ranged=True,
+        name="Лук", description="Дальнобойное оружие охотника: точный выстрел издалека требует развитой ловкости.",
+        damage_dice="1d8", dex_requirement=7, price=8, is_ranged=True,
         effects=[_stat_eff(EffectTarget.DEXTERITY, 2, SourceType.WEAPON, ActivationSource.EQUIPPED_WEAPON, "Лук: DEX +2")],
     )
     cat["crossbow"] = Weapon(
-        name="Арбалет", damage_dice="1d8", str_requirement=7, price=10, is_ranged=True,
+        name="Арбалет", description="Мощный самострел, пробивающий лёгкие доспехи. Нужна сила, чтобы взводить тетиву.",
+        damage_dice="1d8", str_requirement=7, price=10, is_ranged=True,
         effects=[_stat_eff(EffectTarget.DEXTERITY, 2, SourceType.WEAPON, ActivationSource.EQUIPPED_WEAPON, "Арбалет: DEX +2")],
     )
     # Уникальный лук: те же характеристики, что у обычного, но самонаводящиеся
@@ -109,36 +117,54 @@ def seed_all(session) -> dict:
     )
 
     # ───────── броня (§14) ─────────
-    cat["leather"] = Armor(name="Кожаная броня", phys_def_bonus=1, price=8)
+    cat["leather"] = Armor(
+        name="Кожаная броня", description="Дублёная кожа не скует движений, но от серьёзных ударов не спасёт.",
+        phys_def_bonus=1, price=8,
+    )
     cat["chainmail"] = Armor(
-        name="Кольчуга", phys_def_bonus=2, str_requirement=5, price=12,
+        name="Кольчуга", description="Сотни стальных колец защищают от клинков, но сковывают ловкость воина.",
+        phys_def_bonus=2, str_requirement=5, price=12,
         effects=[_stat_eff(EffectTarget.DEXTERITY, -1, SourceType.ARMOR, ActivationSource.EQUIPPED_ARMOR, "Кольчуга: DEX -1")],
     )
     cat["plate"] = Armor(
-        name="Латный доспех", phys_def_bonus=3, str_requirement=7, price=15,
+        name="Латный доспех", description="Цельный стальной доспех — максимальная защита ценой резкого снижения манёвренности.",
+        phys_def_bonus=3, str_requirement=7, price=15,
         effects=[_stat_eff(EffectTarget.DEXTERITY, -3, SourceType.ARMOR, ActivationSource.EQUIPPED_ARMOR, "Латный доспех: DEX -3")],
     )
     cat["mage_robes"] = Armor(
-        name="Одеяния мага", phys_def_bonus=0, price=8,
+        name="Одеяния мага", description="Зачарованные мантии, концентрирующие магическую силу и усиливающие мудрость чародея.",
+        phys_def_bonus=0, price=8,
         effects=[_stat_eff(EffectTarget.WISDOM, 2, SourceType.ARMOR, ActivationSource.EQUIPPED_ARMOR, "Одеяния мага: WIS +2")],
     )
 
     # ───────── зелья (§14) ─────────
-    cat["small_heal"] = Item(name="Малое зелье лечения", heal_dice="1d4", price=7, is_consumable=True)
-    cat["heal"] = Item(name="Зелье лечения", heal_dice="2d4", price=10, is_consumable=True)
-    cat["big_heal"] = Item(name="Большое зелье лечения", heal_dice="3d4", price=15, is_consumable=True)
+    cat["small_heal"] = Item(
+        name="Малое зелье лечения", description="Маленький пузырёк зелья — быстро затягивает незначительные порезы и ссадины.",
+        heal_dice="1d4", price=7, is_consumable=True,
+    )
+    cat["heal"] = Item(
+        name="Зелье лечения", description="Добротное зелье — возвращает силы после серьёзных боевых ранений.",
+        heal_dice="2d4", price=10, is_consumable=True,
+    )
+    cat["big_heal"] = Item(
+        name="Большое зелье лечения", description="Мощный эликсир восстановления, способный поднять воина даже с порога смерти.",
+        heal_dice="3d4", price=15, is_consumable=True,
+    )
 
     # ───────── магические предметы (§14) ─────────
     cat["luck_talisman"] = Item(
-        name="Талисман удачи", price=10,
+        name="Талисман удачи", description="Зачарованный амулет с клевером — судьба благосклоннее к носителю во всех бросках.",
+        price=10,
         effects=[_attr_eff(EffectTarget.ALL_D20_ROLLS, 2, SourceType.ITEM, ActivationSource.IN_INVENTORY, "Талисман удачи: +2 ко всем d20")],
     )
     cat["magic_arrows"] = Item(
-        name="Магические стрелы", price=5,
+        name="Магические стрелы", description="Зачарованные стрелы наносят дополнительный урон при стрельбе из лука или арбалета.",
+        price=5,
         effects=[_attr_eff(EffectTarget.PHYS_DAMAGE, 2, SourceType.ITEM, ActivationSource.IN_INVENTORY_RANGED, "Магические стрелы: +2 к урону (нужен лук/арбалет)")],
     )
     cat["wooden_shield"] = Item(
-        name="Деревянный щит", price=7,
+        name="Деревянный щит", description="Прочный деревянный щит останавливает удары, но немного сковывает ловкость владельца.",
+        price=7,
         effects=[
             _attr_eff(EffectTarget.PHYS_DEFENSE, 1, SourceType.ITEM, ActivationSource.IN_INVENTORY, "Деревянный щит: +1 физ.защ."),
             _stat_eff(EffectTarget.DEXTERITY, -1, SourceType.ITEM, ActivationSource.IN_INVENTORY, "Деревянный щит: DEX -1"),
@@ -155,7 +181,8 @@ def seed_all(session) -> dict:
         ],
     )
     cat["vitality_amulet"] = Item(
-        name="Амулет живучести", price=10,
+        name="Амулет живучести", description="Рубиновый амулет, укрепляющий жизненные силы и расширяющий запас здоровья носителя.",
+        price=10,
         effects=[_attr_eff(EffectTarget.HP, 5, SourceType.ITEM, ActivationSource.IN_INVENTORY, "Амулет живучести: +5 HP")],
     )
 
@@ -172,11 +199,13 @@ def seed_all(session) -> dict:
 
     # ───────── тома магии (§14) ─────────
     cat["tome_ray"] = SpellBook(
-        name="Том «Магический луч»", spell_name="Магический луч",
+        name="Том «Магический луч»", description="Фолиант с заклинанием концентрированного разряда — бьёт одну цель мощным лучом силы.",
+        spell_name="Магический луч",
         damage_dice="1d10", difficulty=8, attack_stat="wisdom", price=7,
     )
     cat["tome_arrows"] = SpellBook(
-        name="Том «Магические стрелы»", spell_name="Магические стрелы",
+        name="Том «Магические стрелы»", description="Том залпового заклинания. Прочитав однажды, персонаж выучивает навык навсегда.",
+        spell_name="Магические стрелы",
         damage_dice="4d4", difficulty=10, attack_stat="wisdom", price=7,
     )
 
