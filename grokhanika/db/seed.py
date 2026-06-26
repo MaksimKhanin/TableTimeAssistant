@@ -403,9 +403,9 @@ def seed_all(session) -> dict:
 
     cat["tome_fireball"] = SpellBook(
         name="Том «Огненный шар»",
-        description="Том огненного взрыва. Прочитав, маг выучивает навык «Огненный шар» навсегда.",
-        spell_name="Огненный шар", damage_dice="2d6", difficulty=9, attack_stat="wisdom", price=15,
-        effects=[_attr_eff(EffectTarget.IGNORE_BASTION, 0, SourceType.SPELL, ActivationSource.IN_INVENTORY, "Том «Огненный шар»: игнорирует Бастион")],
+        description="Том огненного взрыва. Основная цель — полный урон, все прочие враги получают AoE-взрыв.",
+        spell_name="Огненный шар", damage_dice="2d6", aoe_damage_dice="1d6",
+        difficulty=9, attack_stat="wisdom", price=15,
     )
     cat["tome_lightning"] = SpellBook(
         name="Том «Молния»",
@@ -419,13 +419,11 @@ def seed_all(session) -> dict:
     )
 
     # ───────── свитки (одноразовые заклинания) ─────────
-    # IGNORE_BASTION: движок не поддерживает AoE-урон, но эффект позволяет
-    # выбрать любую одиночную цель (включая защищённых Бастионом).
     cat["scroll_fireball"] = Scroll(
         name="Свиток «Огненный шар»",
-        description="Одноразовый свиток: взрыв огня. Игнорирует Бастион — цель можно выбрать свободно.",
-        spell_name="Огненный шар", damage_dice="2d6", difficulty=9, attack_stat="wisdom", price=8,
-        effects=[_attr_eff(EffectTarget.IGNORE_BASTION, 0, SourceType.SPELL, ActivationSource.IN_INVENTORY, "Огненный шар: игнорирует Бастион")],
+        description="Одноразовый свиток: взрыв огня. Основная цель — полный урон; все прочие враги — AoE-взрыв.",
+        spell_name="Огненный шар", damage_dice="2d6", aoe_damage_dice="1d6",
+        difficulty=9, attack_stat="wisdom", price=8,
     )
     cat["scroll_ice_arrow"] = Scroll(
         name="Свиток «Ледяная стрела»",
@@ -530,10 +528,10 @@ def seed_all(session) -> dict:
 
     cat["skill_fireball"] = Skill(
         name="Навык «Огненный шар»",
-        description="Выучен из тома. Маг кастует огненный взрыв, игнорирующий Бастион — любая цель доступна.",
+        description="Выученный навык. Маг кастует взрыв: основная цель получает полный урон, все остальные враги — AoE-взрыв.",
         is_passive=False, price=18,
-        spell_name="Огненный шар", damage_dice="2d6", difficulty=9, attack_stat="wisdom",
-        effects=[_attr_eff(EffectTarget.IGNORE_BASTION, 0, SourceType.SPELL, ActivationSource.IN_INVENTORY, "Навык «Огненный шар»: игнорирует Бастион")],
+        spell_name="Огненный шар", damage_dice="2d6", aoe_damage_dice="1d6",
+        difficulty=9, attack_stat="wisdom",
     )
     cat["tome_fireball"].teaches_skill = cat["skill_fireball"]
 

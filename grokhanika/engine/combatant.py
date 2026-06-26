@@ -54,6 +54,7 @@ class _ItemSnap:
     spell_name: Optional[str] = None
     spell_damage_dice: Optional[str] = None
     spell_difficulty: Optional[int] = None
+    aoe_damage_dice: Optional[str] = None  # кубики AoE-взрыва (None = одиночная цель)
 
     @property
     def is_potion(self) -> bool:
@@ -149,6 +150,7 @@ class Combatant:
                     spell_name=getattr(item_card, "spell_name", None),
                     spell_damage_dice=getattr(item_card, "damage_dice", None),
                     spell_difficulty=getattr(item_card, "difficulty", None),
+                    aoe_damage_dice=getattr(item_card, "aoe_damage_dice", None),
                 )
             )
             self._gather_abilities(item_card)
@@ -183,6 +185,7 @@ class Combatant:
                     spell_name=getattr(skill_card, "spell_name", None),
                     spell_damage_dice=getattr(skill_card, "damage_dice", None),
                     spell_difficulty=getattr(skill_card, "difficulty", None),
+                    aoe_damage_dice=getattr(skill_card, "aoe_damage_dice", None),
                 )
             )
 
