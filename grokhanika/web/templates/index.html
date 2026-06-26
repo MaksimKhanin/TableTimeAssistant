@@ -13,6 +13,7 @@
       <button class="mode-btn active" data-mode="home">🏠 Главная</button>
       <button class="mode-btn" data-mode="admin">🛠️ Отладка / Админка</button>
       <button class="mode-btn" data-mode="sim">⚔️ Имитация боя</button>
+      <button class="mode-btn" data-mode="party">👥 Группа</button>
     </nav>
   </header>
 
@@ -33,6 +34,11 @@
             <span class="big-ico">⚔️</span>
             <span class="big-title">Имитация боя</span>
             <span class="big-desc">Соберите врагов и союзников (за NPC играет ИИ) и симулируйте сражение</span>
+          </button>
+          <button class="big-btn" data-goto="party">
+            <span class="big-ico">👥</span>
+            <span class="big-title">Состояние группы</span>
+            <span class="big-desc">Инвентарь и экипировка персонажей — оружие, доспехи, предметы, навыки</span>
           </button>
         </div>
       </div>
@@ -150,7 +156,27 @@
         <div class="outcome hidden" id="ba-outcome"></div>
       </div>
     </section>
+
+    <!-- ───────── Состояние группы ───────── -->
+    <section class="view hidden" data-view="party">
+      <div class="party-head">
+        <h2>👥 Состояние группы</h2>
+        <button class="btn-secondary" id="party-refresh">↻ Обновить</button>
+      </div>
+      <div class="party-grid" id="party-grid"></div>
+    </section>
   </main>
+
+  <!-- ───────── Модалка экипировки ───────── -->
+  <div class="modal-backdrop hidden" id="equip-modal">
+    <div class="modal modal-equip">
+      <div class="modal-head">
+        <h2 id="equip-modal-title">Выбрать снаряжение</h2>
+        <button class="modal-close" id="equip-modal-close">✕</button>
+      </div>
+      <div class="modal-body" id="equip-modal-body"></div>
+    </div>
+  </div>
 
   <!-- ───────── Модалка формы ───────── -->
   <div class="modal-backdrop hidden" id="modal">

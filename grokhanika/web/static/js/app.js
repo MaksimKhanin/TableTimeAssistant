@@ -46,6 +46,7 @@ function showMode(mode) {
   $$(".view").forEach(v => v.classList.toggle("hidden", v.dataset.view !== mode));
   if (mode === "admin" && !state.categories) initAdmin();
   if (mode === "sim" && !state.roster) initSim();
+  if (mode === "party") initParty();
 }
 
 document.addEventListener("click", (e) => {
@@ -1304,6 +1305,180 @@ $("#ba-pass").onclick = () => {
 
 $("#ap-cancel").onclick = closeApPopup;
 $("#action-popup-bg").onclick = closeApPopup;
+
+// ───────────────────────── Состояние группы ─────────────────────────
+
+const partyState = { chars: [], equipment: null };
+
+async function initParty() {
+  partyState.chars = await API.get("/api/party");
+  renderParty();
+}
+
+function renderParty() {
+  const grid = $("#party-grid");
+  grid.innerHTML = "";
+  if (!partyState.chars.length) {
+    grid.innerHTML = '<p style="color:var(--muted);text-align:center;padding:40px">Нет игровых персонажей.</p>';
+    return;
+  }
+  partyState.chars.forEach(ch => grid.appendChild(buildCharCard(ch)));
+}
+
+function buildCharCard(ch) {
+  const el = document.createElement("div");
+  el.className = "party-char";
+
+  // ── шапка ──
+  const hpPct = ch.max_hp ? Math.max(0, Math.min(100, (ch.current_hp / ch.max_hp) * 100)) : 0;
+  const fillCls = hpPct > 50 ? "" : hpPct > 25 ? " low" : " crit";
+  el.innerHTML = `
+    <div class="party-char-head">
+      <div class="party-char-name">${esc(ch.name)}</div>
+      ${ch.description ? `<div class="party-char-desc">${esc(ch.description)}</div>` : ""}
+      <div class="party-hp-row">
+        <div class="party-hp-bar"><div class="party-hp-fill${fillCls}" style="width:${hpPct}%"></div></div>
+        <span class="party-hp-label">${ch.current_hp} / ${ch.max_hp} HP</span>
+      </div>
+      <div class="party-stats">
+        <span class="party-stat">💪 <b>${ch.strength}</b></span>
+        <span class="party-stat">🏃 <b>${ch.dexterity}</b></span>
+        <span class="party-stat">🧠 <b>${ch.wisdom}</b></span>
+        <span class="party-stat">💬 <b>${ch.charisma}</b></span>
+        <span class="party-stat">ФЗ <b>${ch.phys_defense}</b></span>
+        <span class="party-stat">МЗ <b>${ch.mag_defense}</b></span>
+      </div>
+      <div class="party-money">💰 ${ch.money} зол.</div>
+    </div>
+
+    <div class="party-section" id="equip-${ch.id}">
+      <div class="party-section-title">Экипировка</div>
+      ${buildEquipSlot(ch, "weapon")}
+      ${buildEquipSlot(ch, "armor")}
+    </div>
+
+    ${ch.inventory.length ? `
+    <div class="party-section">
+      <div class="party-section-title">Инвентарь</div>
+      ${ch.inventory.map(it => buildInvItem(it)).join("")}
+    </div>` : ""}
+
+    ${ch.skills.length ? `
+    <div class="party-section">
+      <div class="party-section-title">Навыки</div>
+      ${ch.skills.map(s => `
+        <div class="skill-item">
+          <div class="skill-info">
+            <div class="skill-name">${esc(s.name)}</div>
+            ${s.description ? `<div class="skill-desc">${esc(s.description)}</div>` : ""}
+          </div>
+          <span class="skill-tag">${s.is_passive ? "пассивный" : "активный"}</span>
+        </div>`).join("")}
+    </div>` : ""}`;
+
+  // Кнопки слотов навешиваем через JS после render
+  el.querySelectorAll("[data-equip-pick]").forEach(btn => {
+    const slot = btn.dataset.equipPick;
+    btn.onclick = () => openEquipPicker(ch.id, slot);
+  });
+  el.querySelectorAll("[data-equip-remove]").forEach(btn => {
+    const slot = btn.dataset.equipRemove;
+    btn.onclick = () => doEquip(ch.id, slot, null);
+  });
+  return el;
+}
+
+function buildEquipSlot(ch, slot) {
+  const equipped = slot === "weapon" ? ch.equipped_weapon : ch.equipped_armor;
+  const ico = slot === "weapon" ? "⚔️" : "🛡️";
+  const label = slot === "weapon" ? "Оружие" : "Доспех";
+  if (equipped) {
+    const sub = slot === "weapon"
+      ? `урон ${equipped.damage_dice}`
+      : `+${equipped.phys_def_bonus} к физзащите`;
+    return `<div class="equip-slot">
+      <span class="equip-ico">${ico}</span>
+      <div class="equip-info">
+        <div class="equip-name">${esc(equipped.name)}</div>
+        <div class="equip-sub">${sub}</div>
+      </div>
+      <div class="equip-actions">
+        <button class="btn-xs" data-equip-pick="${slot}">Сменить</button>
+        <button class="btn-xs btn-unequip" data-equip-remove="${slot}">Снять</button>
+      </div>
+    </div>`;
+  }
+  return `<div class="equip-slot">
+    <span class="equip-ico">${ico}</span>
+    <span class="equip-empty">${label} не надет</span>
+    <div class="equip-actions">
+      <button class="btn-xs" data-equip-pick="${slot}">Надеть</button>
+    </div>
+  </div>`;
+}
+
+function buildInvItem(it) {
+  const tags = [];
+  if (it.passive_in_inventory) tags.push(`<span class="inv-tag passive">активно в инвентаре</span>`);
+  if (it.grants_skill) tags.push(`<span class="inv-tag passive">даёт навык: ${esc(it.grants_skill)}</span>`);
+  if (it.heal_dice) tags.push(`<span class="inv-tag heal">лечение ${it.heal_dice}</span>`);
+  if (it.spell_name) tags.push(`<span class="inv-tag spell">⚡ ${esc(it.spell_name)}${it.damage_dice ? " " + it.damage_dice : ""}</span>`);
+  if (it.is_consumable) tags.push(`<span class="inv-tag">одноразовый</span>`);
+  return `<div class="inv-item">
+    <span class="inv-ico">${it.type_icon || "📦"}</span>
+    <div class="inv-info">
+      <div class="inv-name">${esc(it.name)}</div>
+      ${it.description ? `<div class="inv-desc">${esc(it.description)}</div>` : ""}
+      ${tags.length ? `<div class="inv-tags">${tags.join("")}</div>` : ""}
+    </div>
+  </div>`;
+}
+
+async function openEquipPicker(charId, slot) {
+  if (!partyState.equipment) {
+    partyState.equipment = await API.get("/api/equipment");
+  }
+  const list = slot === "weapon" ? partyState.equipment.weapons : partyState.equipment.armor;
+  const title = slot === "weapon" ? "Выбрать оружие" : "Выбрать доспех";
+  $("#equip-modal-title").textContent = title;
+  const body = $("#equip-modal-body");
+  body.innerHTML = "";
+  list.forEach(item => {
+    const sub = slot === "weapon" ? `урон ${item.damage_dice}` : `+${item.phys_def_bonus} к физзащите`;
+    const row = document.createElement("div");
+    row.className = "equip-pick-item";
+    row.innerHTML = `<span class="equip-ico">${slot === "weapon" ? "⚔️" : "🛡️"}</span>
+      <div class="equip-pick-info">
+        <div class="equip-pick-name">${esc(item.name)}</div>
+        <div class="equip-pick-sub">${sub}${item.description ? " · " + esc(item.description) : ""}</div>
+      </div>
+      ${item.price != null ? `<span class="equip-pick-price">${item.price}💰</span>` : ""}`;
+    row.onclick = () => { doEquip(charId, slot, item.id); closeModal("#equip-modal"); };
+    body.appendChild(row);
+  });
+  const unequipRow = document.createElement("div");
+  unequipRow.className = "equip-unequip-row";
+  const unBtn = document.createElement("button");
+  unBtn.className = "btn-secondary";
+  unBtn.style.width = "100%";
+  unBtn.textContent = "Снять текущий предмет";
+  unBtn.onclick = () => { doEquip(charId, slot, null); closeModal("#equip-modal"); };
+  unequipRow.appendChild(unBtn);
+  body.appendChild(unequipRow);
+  openModal("#equip-modal");
+}
+
+async function doEquip(charId, slot, cardId) {
+  const { ok, data } = await API.post(`/api/characters/${charId}/equip`, { slot, card_id: cardId });
+  if (!ok) { toast(data?.errors?.__form__ || "Ошибка при экипировке", true); return; }
+  const idx = partyState.chars.findIndex(c => c.id === charId);
+  if (idx !== -1) partyState.chars[idx] = data;
+  renderParty();
+  toast(cardId ? "Экипировано" : "Снято");
+}
+
+$("#party-refresh").onclick = initParty;
+$("#equip-modal-close").onclick = () => closeModal("#equip-modal");
 
 // ───────────────────────── привязка событий ─────────────────────────
 

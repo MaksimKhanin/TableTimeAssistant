@@ -25,7 +25,7 @@ from ..db.models import (
 )
 from ..enums import CardType
 from . import schema
-from .serialize import serialize_ability, serialize_card
+from .serialize import serialize_ability, serialize_card, serialize_character_for_party
 
 # конструкторы карточек по типу (имена полей формы == имена колонок ORM)
 _MODELS: dict[str, type[Card]] = {
@@ -154,6 +154,59 @@ def choices_for(session: Session, source: str) -> list[dict]:
 
 
 # ───────────────────────── создание карточки ─────────────────────────
+
+
+def get_party(session: Session) -> list[dict]:
+    """Все игровые персонажи для экрана состояния группы."""
+    chars = (
+        session.execute(select(Character).where(Character.is_player == True))
+        .scalars()
+        .all()
+    )
+    chars.sort(key=lambda c: c.name.lower())
+    return [serialize_character_for_party(c) for c in chars]
+
+
+def equip_character(session: Session, char_id: int, slot: str, card_id: Optional[int]) -> dict:
+    """Экипировать или снять оружие/броню у персонажа. ``card_id=None`` — снять."""
+    char = session.get(Character, char_id)
+    if char is None:
+        raise CreateError({"__form__": "Персонаж не найден"})
+    if slot == "weapon":
+        if card_id is None:
+            char.equipped_weapon_id = None
+        else:
+            if session.get(Weapon, card_id) is None:
+                raise CreateError({"slot": "Оружие не найдено"})
+            char.equipped_weapon_id = card_id
+    elif slot == "armor":
+        if card_id is None:
+            char.equipped_armor_id = None
+        else:
+            if session.get(Armor, card_id) is None:
+                raise CreateError({"slot": "Броня не найдена"})
+            char.equipped_armor_id = card_id
+    else:
+        raise CreateError({"slot": f"Неизвестный слот: {slot!r}"})
+    session.commit()
+    session.refresh(char)
+    return serialize_character_for_party(char)
+
+
+def list_equipment(session: Session) -> dict:
+    """Все оружие и броня в системе — для выбора экипировки."""
+    weapons = (
+        session.execute(select(Weapon).order_by(Weapon.name)).scalars().all()
+    )
+    armor = (
+        session.execute(select(Armor).order_by(Armor.name)).scalars().all()
+    )
+    return {
+        "weapons": [{"id": w.id, "name": w.name, "damage_dice": w.damage_dice,
+                     "description": w.description or "", "price": w.price} for w in weapons],
+        "armor": [{"id": a.id, "name": a.name, "phys_def_bonus": a.phys_def_bonus,
+                   "description": a.description or "", "price": a.price} for a in armor],
+    }
 
 
 class CreateError(Exception):

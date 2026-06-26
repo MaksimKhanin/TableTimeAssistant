@@ -720,3 +720,203 @@ main { padding: 28px 24px 64px; max-width: 1280px; margin: 0 auto; }
   .bc { width: 80px; }
   .bc-icon { font-size: 22px; }
 }
+
+/* ───────── Состояние группы ───────── */
+.view[data-view="party"] {
+  padding: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.party-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.party-head h2 { margin: 0; font-size: 22px; }
+
+.party-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+.party-char {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.party-char-head {
+  background: var(--panel-2);
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.party-char-name {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+.party-char-desc {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.party-hp-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.party-hp-bar {
+  flex: 1;
+  height: 8px;
+  background: var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.party-hp-fill {
+  height: 100%;
+  background: var(--good);
+  border-radius: 4px;
+  transition: width .4s;
+}
+.party-hp-fill.low { background: var(--accent); }
+.party-hp-fill.crit { background: var(--danger); }
+.party-hp-label {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.party-stats {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.party-stat { display: flex; gap: 3px; align-items: center; }
+.party-stat b { color: var(--text); }
+.party-money {
+  font-size: 12px;
+  color: var(--accent);
+  margin-top: 4px;
+}
+
+.party-section {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.party-section:last-child { border-bottom: none; }
+.party-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+/* Слоты экипировки */
+.equip-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+.equip-slot:last-child { border-bottom: none; padding-bottom: 0; }
+.equip-ico { font-size: 18px; flex-shrink: 0; }
+.equip-info { flex: 1; min-width: 0; }
+.equip-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.equip-sub { font-size: 11px; color: var(--muted); }
+.equip-empty { font-size: 13px; color: var(--muted); font-style: italic; flex: 1; }
+.equip-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+.btn-xs {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: .15s;
+}
+.btn-xs:hover { background: var(--panel); border-color: var(--accent); color: var(--accent); }
+.btn-xs.btn-unequip:hover { border-color: var(--danger); color: var(--danger); }
+
+/* Инвентарь */
+.inv-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(56, 51, 77, .5);
+}
+.inv-item:last-child { border-bottom: none; padding-bottom: 0; }
+.inv-ico { font-size: 15px; flex-shrink: 0; margin-top: 1px; }
+.inv-info { flex: 1; min-width: 0; }
+.inv-name { font-size: 13px; font-weight: 600; }
+.inv-desc { font-size: 11px; color: var(--muted); margin-top: 1px; }
+.inv-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.inv-tag {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.inv-tag.passive { background: rgba(91, 191, 106, .12); border-color: rgba(91, 191, 106, .3); color: var(--good); }
+.inv-tag.spell { background: rgba(123, 92, 255, .12); border-color: rgba(123, 92, 255, .3); color: var(--accent-2); }
+.inv-tag.heal { background: rgba(78, 163, 226, .12); border-color: rgba(78, 163, 226, .3); color: var(--ally); }
+
+/* Навыки */
+.skill-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(56, 51, 77, .5);
+}
+.skill-item:last-child { border-bottom: none; padding-bottom: 0; }
+.skill-info { flex: 1; }
+.skill-name { font-size: 13px; font-weight: 600; }
+.skill-desc { font-size: 11px; color: var(--muted); margin-top: 1px; }
+.skill-tag {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* Модалка выбора экипировки */
+.modal-equip { width: 460px; max-height: 80vh; display: flex; flex-direction: column; }
+.modal-equip .modal-body { overflow-y: auto; }
+.equip-pick-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: .15s;
+  margin-bottom: 4px;
+}
+.equip-pick-item:hover { background: var(--panel-2); }
+.equip-pick-info { flex: 1; }
+.equip-pick-name { font-size: 14px; font-weight: 600; }
+.equip-pick-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.equip-pick-price { font-size: 12px; color: var(--accent); }
+.equip-unequip-row {
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  margin-top: 8px;
+}
+
+@media (max-width: 860px) {
+  .party-grid { grid-template-columns: 1fr; }
+}
