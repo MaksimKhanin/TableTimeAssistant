@@ -22,6 +22,7 @@ from .models import (
     Effect,
     Instrument,
     Item,
+    Scroll,
     Skill,
     SpellBook,
     Weapon,
@@ -116,6 +117,43 @@ def seed_all(session) -> dict:
         ],
     )
 
+    # ───────── дополнительное оружие ─────────
+    cat["spear"] = Weapon(
+        name="Копьё", description="Длинное древковое оружие — хороший баланс досягаемости и урона.",
+        damage_dice="1d8", str_requirement=4, price=6,
+    )
+    cat["club"] = Weapon(
+        name="Дубина", description="Грубое ударное оружие из дерева — дёшево, просто и сердито.",
+        damage_dice="1d6", price=3,
+    )
+    cat["battle_axe"] = Weapon(
+        name="Боевой топор", description="Надёжный топор воина — рубит щиты и пробивает лёгкую броню.",
+        damage_dice="1d8", str_requirement=5, price=7,
+    )
+    cat["hunting_knife"] = Weapon(
+        name="Охотничий нож", description="Острый нож следопыта — удобен и для охоты, и для поединка.",
+        damage_dice="1d6", dex_requirement=5, price=4,
+    )
+    cat["rusty_sword"] = Weapon(
+        name="Ржавый меч", description="Потрёпанный клинок с ржавчиной — дешёвый трофей с павшего врага.",
+        damage_dice="1d6", price=2,
+    )
+    cat["halberd"] = Weapon(
+        name="Алебарда", description="Тяжёлое двуручное оружие стражников — топор и копьё в одном.",
+        damage_dice="1d10", str_requirement=8, price=12,
+        effects=[_stat_eff(EffectTarget.DEXTERITY, -1, SourceType.WEAPON, ActivationSource.EQUIPPED_WEAPON, "Алебарда: DEX -1")],
+    )
+    cat["magic_staff"] = Weapon(
+        name="Магический посох", description="Посох, напитанный магией, — значительно усиливает заклинания и мудрость.",
+        damage_dice="1d6", price=15,
+        effects=[_stat_eff(EffectTarget.WISDOM, 3, SourceType.WEAPON, ActivationSource.EQUIPPED_WEAPON, "Магический посох: WIS +3")],
+    )
+    cat["short_bow"] = Weapon(
+        name="Короткий лук", description="Лёгкий охотничий лук — меньше мощи, зато требует меньше ловкости.",
+        damage_dice="1d6", dex_requirement=5, price=5, is_ranged=True,
+        effects=[_stat_eff(EffectTarget.DEXTERITY, 1, SourceType.WEAPON, ActivationSource.EQUIPPED_WEAPON, "Короткий лук: DEX +1")],
+    )
+
     # ───────── броня (§14) ─────────
     cat["leather"] = Armor(
         name="Кожаная броня", description="Дублёная кожа не скует движений, но от серьёзных ударов не спасёт.",
@@ -135,6 +173,16 @@ def seed_all(session) -> dict:
         name="Одеяния мага", description="Зачарованные мантии, концентрирующие магическую силу и усиливающие мудрость чародея.",
         phys_def_bonus=0, price=8,
         effects=[_stat_eff(EffectTarget.WISDOM, 2, SourceType.ARMOR, ActivationSource.EQUIPPED_ARMOR, "Одеяния мага: WIS +2")],
+    )
+
+    # ───────── дополнительная броня ─────────
+    cat["padded_jacket"] = Armor(
+        name="Стёганая куртка", description="Простёганная ткань смягчает удары — доступна каждому крестьянину.",
+        phys_def_bonus=1, price=4,
+    )
+    cat["tattered_leather"] = Armor(
+        name="Рваная кожа", description="Обрывки кожаной брони — почти ничего не стоит, но лучше, чем ничего.",
+        phys_def_bonus=1, price=1,
     )
 
     # ───────── зелья (§14) ─────────
@@ -186,6 +234,19 @@ def seed_all(session) -> dict:
         effects=[_attr_eff(EffectTarget.HP, 5, SourceType.ITEM, ActivationSource.IN_INVENTORY, "Амулет живучести: +5 HP")],
     )
 
+    cat["bandages"] = Item(
+        name="Бинты", description="Тряпичные бинты — бедняцкая замена зелью лечения, годится в крайнем случае.",
+        heal_dice="1d4", price=3, is_consumable=True,
+    )
+    cat["battle_shield"] = Item(
+        name="Боевой щит", description="Стальной щит воина — надёжно защищает, но сильно сковывает движения.",
+        price=12,
+        effects=[
+            _attr_eff(EffectTarget.PHYS_DEFENSE, 2, SourceType.ITEM, ActivationSource.IN_INVENTORY, "Боевой щит: +2 физ.защ."),
+            _stat_eff(EffectTarget.DEXTERITY, -2, SourceType.ITEM, ActivationSource.IN_INVENTORY, "Боевой щит: DEX -2"),
+        ],
+    )
+
     # ───────── инструменты: предметы, дающие навык, пока в инвентаре (§6, §10) ─────────
     # Сам навык — отдельная сущность Skill (см. ниже); инструмент лишь даёт к нему
     # доступ, пока лежит в инвентаре. Связь grants_skill проставляется после создания
@@ -207,6 +268,23 @@ def seed_all(session) -> dict:
         name="Том «Магические стрелы»", description="Том залпового заклинания. Прочитав однажды, персонаж выучивает навык навсегда.",
         spell_name="Магические стрелы",
         damage_dice="4d4", difficulty=10, attack_stat="wisdom", price=7,
+    )
+
+    # ───────── свитки (одноразовые заклинания) ─────────
+    cat["scroll_fireball"] = Scroll(
+        name="Свиток «Огненный шар»",
+        description="Одноразовый свиток: накрывает группу врагов взрывом огня.",
+        spell_name="Огненный шар", damage_dice="2d6", difficulty=9, attack_stat="wisdom", price=8,
+    )
+    cat["scroll_ice_arrow"] = Scroll(
+        name="Свиток «Ледяная стрела»",
+        description="Одноразовый свиток: пронизывает единственную цель стрелой льда.",
+        spell_name="Ледяная стрела", damage_dice="1d10", difficulty=8, attack_stat="wisdom", price=6,
+    )
+    cat["scroll_heal"] = Scroll(
+        name="Свиток «Исцеление»",
+        description="Одноразовый свиток: восстанавливает здоровье союзника силой света.",
+        spell_name="Исцеление", heal_dice="2d4", difficulty=7, attack_stat="wisdom", price=6,
     )
 
     # ───────── навыки (механика тома/лютни, но вне инвентаря, не продаются) ─────────
@@ -333,6 +411,201 @@ def seed_all(session) -> dict:
                 actions=[{"type": ActionType.INSTAKILL.value, "chance": 1.0}],
             )
         ],
+    )
+
+    # ───────── архетипы существ ─────────
+
+    # ── обычные люди ──
+    cat["peasant"] = Creature(
+        name="Крестьянин", description="Мирный житель деревни с вилами. Лёгкая цель, но в толпе опасен.",
+        is_sentient=True,
+        hp=5, dexterity=3, phys_defense=6, mag_defense=1, mental_defense=5,
+        phys_damage_dice="1d4", strength=2, charisma=2, wisdom=2,
+    )
+    cat["townsperson"] = Creature(
+        name="Горожанин", description="Городской житель, способный постоять за себя. Можно запугать или убедить.",
+        is_sentient=True,
+        hp=6, dexterity=4, phys_defense=7, mag_defense=2, mental_defense=6,
+        phys_damage_dice="1d4", strength=3, charisma=4, wisdom=3,
+    )
+    cat["peasant_mob"] = Creature(
+        name="Толпа крестьян", description="Разозлённая толпа с вилами и факелами. Слаба поодиночке, но сметает всё скопом.",
+        is_sentient=True,
+        hp=25, dexterity=2, phys_defense=5, mag_defense=1, mental_defense=4,
+        phys_damage_dice="2d6", strength=4, charisma=1, wisdom=1,
+    )
+    cat["city_mob"] = Creature(
+        name="Толпа горожан", description="Разъярённые горожане — непредсказуемы и опасны числом, можно утихомирить речью.",
+        is_sentient=True,
+        hp=20, dexterity=3, phys_defense=6, mag_defense=2, mental_defense=5,
+        phys_damage_dice="1d8", strength=3, charisma=2, wisdom=2,
+    )
+
+    # ── стражники и воины ──
+    cat["city_guard"] = Creature(
+        name="Городской стражник", description="Стражник городских ворот — хорошо обучен и действует по уставу.",
+        is_sentient=True,
+        hp=12, dexterity=5, phys_defense=10, mag_defense=3, mental_defense=7,
+        phys_damage_dice="1d8", strength=6, charisma=4, wisdom=4,
+    )
+    cat["bandit"] = Creature(
+        name="Бандит", description="Лесной разбойник, промышляющий грабежом. Беспощаден, но сдаётся при превосходстве.",
+        is_sentient=True,
+        hp=10, dexterity=6, phys_defense=9, mag_defense=2, mental_defense=6,
+        phys_damage_dice="1d8", strength=5, charisma=3, wisdom=3,
+    )
+    cat["highwayman"] = Creature(
+        name="Разбойник с большой дороги", description="Быстрый и коварный: атакует из засады и метко стреляет из лука.",
+        is_sentient=True,
+        hp=10, dexterity=8, phys_defense=9, mag_defense=2, mental_defense=7,
+        phys_damage_dice="1d8", strength=4, charisma=3, wisdom=3,
+    )
+    cat["mercenary"] = Creature(
+        name="Наёмник", description="Опытный наёмный солдат — воюет за деньги, но профессионально и надёжно.",
+        is_sentient=True,
+        hp=14, dexterity=6, phys_defense=11, mag_defense=3, mental_defense=7,
+        phys_damage_dice="1d8", strength=7, charisma=3, wisdom=3,
+    )
+    cat["knight"] = Creature(
+        name="Рыцарь", description="Закованный в латы рыцарь — лидер отряда, вдохновляющий союзников боевым кличем.",
+        is_sentient=True,
+        hp=20, dexterity=4, phys_defense=14, mag_defense=4, mental_defense=9,
+        phys_damage_dice="1d10", strength=9, charisma=6, wisdom=5,
+        abilities=[
+            _buff_ability(
+                "Боевой клич", "Рыцарь воодушевляет союзников: +2 ко всем броскам на 3 раунда",
+                {
+                    "target_type": EffectTargetType.ATTR.value,
+                    "target": EffectTarget.ALL_D20_ROLLS.value,
+                    "modifier": 2, "duration": 3, "source_type": SourceType.ITEM.value,
+                    "description": "Боевой клич: +2 ко всем броскам",
+                },
+            ),
+        ],
+    )
+    cat["orc"] = Creature(
+        name="Орк", description="Свирепый орк — прирождённый воин, живёт войной и умирает с оружием в руках.",
+        is_sentient=True,
+        hp=15, dexterity=5, phys_defense=10, mag_defense=3, mental_defense=7,
+        phys_damage_dice="1d10", strength=8, charisma=3, wisdom=2,
+    )
+
+    # ── животные ──
+    cat["wolf"] = Creature(
+        name="Волк", description="Лесной хищник — быстр, чуток и опасен в одиночку.",
+        is_sentient=False,
+        hp=10, dexterity=7, phys_defense=9, mag_defense=1, mental_defense=5,
+        phys_damage_dice="1d8", strength=5, charisma=1, wisdom=3,
+    )
+    cat["wolf_pack"] = Creature(
+        name="Стая волков", description="Слаженная стая действует как единый организм, окружая и изматывая добычу.",
+        is_sentient=False,
+        hp=22, dexterity=6, phys_defense=8, mag_defense=1, mental_defense=4,
+        phys_damage_dice="2d6", strength=5, charisma=1, wisdom=2,
+    )
+    cat["bear"] = Creature(
+        name="Медведь", description="Огромный лесной медведь — медлительный, но обладает чудовищной силой удара.",
+        is_sentient=False,
+        hp=18, dexterity=5, phys_defense=11, mag_defense=2, mental_defense=6,
+        phys_damage_dice="1d10", strength=9, charisma=1, wisdom=3,
+    )
+    cat["giant_rat"] = Creature(
+        name="Гигантская крыса", description="Крупная болотная крыса с острыми зубами — чаще встречается группами.",
+        is_sentient=False,
+        hp=4, dexterity=6, phys_defense=6, mag_defense=1, mental_defense=3,
+        phys_damage_dice="1d4", strength=2, charisma=1, wisdom=2,
+    )
+    cat["bat_swarm"] = Creature(
+        name="Рой летучих мышей", description="Тучи острых зубов — почти невозможно поразить одним ударом, изматывает укусами.",
+        is_sentient=False,
+        hp=12, dexterity=8, phys_defense=7, mag_defense=1, mental_defense=3,
+        phys_damage_dice="1d4", strength=1, charisma=1, wisdom=2,
+    )
+
+    # ── нежить ──
+    cat["skeleton"] = Creature(
+        name="Скелет", description="Оживлённые магией кости — не чувствует страха и боли, безмолвный исполнитель приказов.",
+        is_sentient=False,
+        hp=8, dexterity=5, phys_defense=8, mag_defense=2, mental_defense=15,
+        phys_damage_dice="1d6", strength=4, charisma=1, wisdom=1,
+    )
+    cat["zombie"] = Creature(
+        name="Зомби", description="Медлительный ходячий мертвец — крайне живучий, не реагирует на угрозы и боль.",
+        is_sentient=False,
+        hp=12, dexterity=2, phys_defense=9, mag_defense=3, mental_defense=15,
+        phys_damage_dice="1d6", strength=6, charisma=1, wisdom=1,
+    )
+    cat["undead_horde"] = Creature(
+        name="Толпа нежити", description="Волна ходячих мертвецов, сметающая всё на пути. Никакие угрозы их не остановят.",
+        is_sentient=False,
+        hp=30, dexterity=2, phys_defense=7, mag_defense=2, mental_defense=15,
+        phys_damage_dice="2d6", strength=5, charisma=1, wisdom=1,
+    )
+    cat["ghost"] = Creature(
+        name="Призрак", description="Неупокоенный дух — нематериален, почти недосягаем для оружия, сеет смертельный ужас.",
+        is_sentient=False,
+        hp=10, dexterity=8, phys_defense=16, mag_defense=10, mental_defense=8,
+        phys_damage_dice="1d6", strength=2, charisma=3, wisdom=6,
+        abilities=[
+            _debuff_ability(
+                "Смертельный ужас", "Вид призрака парализует врагов страхом: -2 к атакам на 3 раунда",
+                {
+                    "target_type": EffectTargetType.ATTR.value,
+                    "target": EffectTarget.ALL_ATTACK_ROLLS.value,
+                    "modifier": -2, "duration": 3, "source_type": SourceType.SPELL.value,
+                    "description": "Смертельный ужас: -2 к атакам",
+                },
+            ),
+        ],
+    )
+    cat["skeleton_archer"] = Creature(
+        name="Скелет-лучник", description="Скелет с луком: стреляет без устали с дальней дистанции, пока его не уничтожат.",
+        is_sentient=False,
+        hp=7, dexterity=7, phys_defense=7, mag_defense=2, mental_defense=15,
+        phys_damage_dice="1d8", strength=3, charisma=1, wisdom=1,
+    )
+
+    # ── прочие существа ──
+    cat["ogre"] = Creature(
+        name="Огр", description="Огромный тупоголовый огр — дикая сила, почти нет интеллекта, смертоносен в ближнем бою.",
+        is_sentient=True,
+        hp=25, dexterity=3, phys_defense=12, mag_defense=3, mental_defense=5,
+        phys_damage_dice="1d12", strength=12, charisma=1, wisdom=1,
+    )
+    cat["troll"] = Creature(
+        name="Тролль", description="Живучий тролль с грубой кожей. Говорят, мелкие раны затягиваются у него прямо в бою.",
+        is_sentient=True,
+        hp=20, dexterity=4, phys_defense=11, mag_defense=4, mental_defense=6,
+        phys_damage_dice="1d10", strength=10, charisma=1, wisdom=2,
+    )
+    cat["kobold"] = Creature(
+        name="Кобольд", description="Юркий ящероподобный кобольд — слаб в одиночку, но хитёр и любит засады.",
+        is_sentient=True,
+        hp=4, dexterity=7, phys_defense=7, mag_defense=2, mental_defense=5,
+        phys_damage_dice="1d4", strength=2, charisma=2, wisdom=3,
+    )
+    cat["dark_priest"] = Creature(
+        name="Жрец тьмы", description="Служитель тёмных богов, насылающий проклятия и лишающий врагов боевого духа.",
+        is_sentient=True, is_unique=True,
+        hp=16, dexterity=4, phys_defense=8, mag_defense=8, mental_defense=10,
+        phys_damage_dice="1d4", strength=3, charisma=7, wisdom=10,
+        abilities=[
+            _debuff_ability(
+                "Проклятие тьмы", "Жрец насылает проклятие: -2 к броскам атаки всех врагов на 3 раунда",
+                {
+                    "target_type": EffectTargetType.ATTR.value,
+                    "target": EffectTarget.ALL_ATTACK_ROLLS.value,
+                    "modifier": -2, "duration": 3, "source_type": SourceType.SPELL.value,
+                    "description": "Проклятие тьмы: -2 к атакам",
+                },
+            ),
+        ],
+    )
+    cat["merchant"] = Creature(
+        name="Торговец", description="Мирный торговец — беззащитен в схватке, но щедро платит за охрану и сведения.",
+        is_sentient=True,
+        hp=6, dexterity=4, phys_defense=7, mag_defense=2, mental_defense=8,
+        phys_damage_dice="1d4", strength=2, charisma=8, wisdom=6,
     )
 
     session.add_all(list(cat.values()))
