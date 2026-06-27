@@ -112,16 +112,30 @@ function showMode(mode) {
   $$(".mode-btn").forEach(b => b.classList.toggle("active", b.dataset.mode === mode));
   $$(".view").forEach(v => v.classList.toggle("hidden", v.dataset.view !== mode));
   if (mode === "admin" && !state.categories) initAdmin();
-  if (mode === "sim" && !state.roster) initSim();
   if (mode === "adv" && !advState.ready) initAdventure();
   if (mode === "party") initParty();
+}
+
+// Переключение под-вкладок в Отладке/Админке
+let _adminTab = "world";
+function showAdminTab(tab) {
+  _adminTab = tab;
+  $$(".admin-sub-tab").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
+  $$(".admin-sub-section").forEach(s => s.classList.toggle("hidden", s.dataset.section !== tab));
+  if (tab === "sim" && !state.roster) initSim();
+  if (tab === "llm") loadLLMSettings();
 }
 
 document.addEventListener("click", (e) => {
   const modeBtn = e.target.closest(".mode-btn");
   if (modeBtn) showMode(modeBtn.dataset.mode);
   const goto = e.target.closest("[data-goto]");
-  if (goto) showMode(goto.dataset.goto);
+  if (goto) {
+    showMode(goto.dataset.goto);
+    if (goto.dataset.gotoTab) showAdminTab(goto.dataset.gotoTab);
+  }
+  const subTab = e.target.closest(".admin-sub-tab");
+  if (subTab) showAdminTab(subTab.dataset.tab);
 });
 
 const state = {
@@ -1453,11 +1467,43 @@ $("#action-popup-bg").onclick = closeApPopup;
 
 // ───────────────────────── Состояние группы ─────────────────────────
 
-const partyState = { chars: [] };
+const partyState = { chars: [], sessions: [], sessionId: "" };
 let _dragCtx = null; // { charId, cardId, cardType, fromSlot: null|"weapon"|"armor" }
 
 async function initParty() {
-  partyState.chars = await API.get("/api/party");
+  // Загружаем список сессий для селектора
+  partyState.sessions = await API.get("/api/adventure/list").catch(() => []);
+  renderSessionSelector();
+  await loadPartyChars();
+}
+
+function renderSessionSelector() {
+  const sel = $("#party-session-sel");
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">Все персонажи</option>';
+  partyState.sessions.forEach(s => {
+    const o = document.createElement("option");
+    o.value = s.id;
+    const party = (s.party || []).map(c => c.name).join(", ");
+    o.textContent = `${s.title || s.adventure_type} (${party || "—"})`;
+    sel.appendChild(o);
+  });
+  // восстановить выбранную сессию если она ещё существует
+  if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+  partyState.sessionId = sel.value;
+}
+
+async function loadPartyChars() {
+  const sessionId = partyState.sessionId;
+  if (sessionId) {
+    const data = await API.get(`/api/adventure/${sessionId}`);
+    if (data.error) { partyState.chars = []; renderParty(); return; }
+    const sessionPartyIds = new Set((data.party || []).map(c => c.id));
+    const allChars = await API.get("/api/party");
+    partyState.chars = allChars.filter(c => sessionPartyIds.has(c.id));
+  } else {
+    partyState.chars = await API.get("/api/party");
+  }
   renderParty();
 }
 
@@ -1564,7 +1610,7 @@ function buildCharCard(ch) {
     item.addEventListener("dragend", () => item.classList.remove("dragging"));
   });
 
-  // Drag from inventory → equip slot
+  // Drag from inventory → equip slot (мышь + тач)
   el.querySelectorAll("[data-inv-item]").forEach(item => {
     item.addEventListener("dragstart", e => {
       SFX.pickup();
@@ -1578,6 +1624,18 @@ function buildCharCard(ch) {
       e.dataTransfer.effectAllowed = "move";
     });
     item.addEventListener("dragend", () => item.classList.remove("dragging"));
+    setupInvItemInteraction(item);
+  });
+
+  // Также вешаем меню на неэкипируемые предметы
+  el.querySelectorAll(".pch-inv-item:not([data-inv-item])").forEach(item => {
+    setupInvItemInteraction(item);
+  });
+
+  // Контекстное меню на экипированные предметы
+  el.querySelectorAll("[data-from-slot]").forEach(item => {
+    item.addEventListener("contextmenu", e => { e.preventDefault(); showPartyRadialMenu(e.clientX, e.clientY, item, "equipped"); });
+    setupLongPress(item, () => showPartyRadialMenu(0, 0, item, "equipped", true));
   });
 
   // Drop zones
@@ -1619,13 +1677,21 @@ function buildCharCard(ch) {
 function buildInvItem(it, charId) {
   const isEquippable = it.card_type === "weapon" || it.card_type === "armor";
   const tags = [];
-  if (it.passive_in_inventory) tags.push(`<span class="pch-tag passive">активно в инвентаре</span>`);
-  if (it.grants_skill) tags.push(`<span class="pch-tag passive">навык: ${esc(it.grants_skill)}</span>`);
-  if (it.heal_dice) tags.push(`<span class="pch-tag heal">лечение ${it.heal_dice}</span>`);
+  if (it.passive_in_inventory) tags.push(`<span class="pch-tag passive">в инвентаре</span>`);
+  if (it.grants_skill) {
+    // убираем дублирующий префикс "Навык" из названия навыка
+    const skillName = it.grants_skill.replace(/^[Нн]авык\s+/u, "");
+    tags.push(`<span class="pch-tag passive">🎓 ${esc(skillName)}</span>`);
+  }
+  if (it.heal_dice) tags.push(`<span class="pch-tag heal">💊 ${it.heal_dice}</span>`);
   if (it.spell_name) tags.push(`<span class="pch-tag spell">⚡ ${esc(it.spell_name)}${it.damage_dice ? " " + it.damage_dice : ""}</span>`);
   if (it.is_consumable) tags.push(`<span class="pch-tag">одноразовый</span>`);
-  return `<div class="pch-inv-item${isEquippable ? " equippable" : ""}"
-    ${isEquippable ? `draggable="true" data-inv-item data-char-id="${charId}" data-card-id="${it.id}" data-card-type="${it.card_type}"` : ""}>
+  const dataAttrs = isEquippable
+    ? `draggable="true" data-inv-item data-char-id="${charId}" data-card-id="${it.id}" data-card-type="${it.card_type}"`
+    : `data-char-id="${charId}" data-card-id="${it.id}" data-card-type="${it.card_type}"`;
+  return `<div class="pch-inv-item${isEquippable ? " equippable" : ""}" ${dataAttrs}
+    data-is-consumable="${it.is_consumable || false}"
+    data-item-name="${esc(it.name)}">
     <span class="pch-inv-ico">${it.type_icon || "📦"}</span>
     <div class="pch-inv-info">
       <div class="pch-inv-name">${esc(it.name)}</div>
@@ -1644,7 +1710,194 @@ async function doEquip(charId, slot, cardId) {
   toast(cardId ? "Экипировано" : "Снято");
 }
 
+// ── Touch drag-and-drop для инвентаря ──
+
+let _touchDragEl = null;
+let _touchGhost = null;
+let _touchCtx = null;
+
+function setupInvItemInteraction(item) {
+  item.addEventListener("contextmenu", e => {
+    e.preventDefault();
+    showPartyRadialMenu(e.clientX, e.clientY, item, "inventory");
+  });
+  setupLongPress(item, () => showPartyRadialMenu(0, 0, item, "inventory", true));
+
+  if (!item.dataset.invItem) return; // только equippable тянем
+
+  item.addEventListener("touchstart", e => {
+    const touch = e.touches[0];
+    _touchCtx = {
+      charId: +item.dataset.charId,
+      cardId: +item.dataset.cardId,
+      cardType: item.dataset.cardType,
+      fromSlot: null,
+    };
+    _touchDragEl = item;
+    SFX.pickup();
+    item.classList.add("dragging");
+
+    const ghost = item.cloneNode(true);
+    ghost.className = item.className + " touch-drag-ghost";
+    ghost.style.width = item.offsetWidth + "px";
+    document.body.appendChild(ghost);
+    _touchGhost = ghost;
+    _moveTouchGhost(touch.clientX, touch.clientY);
+  }, { passive: true });
+
+  item.addEventListener("touchmove", e => {
+    if (!_touchGhost) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    _moveTouchGhost(touch.clientX, touch.clientY);
+    // подсвечиваем зону под пальцем
+    _touchGhost.style.display = "none";
+    const below = document.elementFromPoint(touch.clientX, touch.clientY);
+    _touchGhost.style.display = "";
+    $$("[data-drop-zone]").forEach(z => z.classList.remove("drag-over"));
+    const zone = below && below.closest("[data-drop-zone]");
+    if (zone && _isValidDrop(zone, _touchCtx)) zone.classList.add("drag-over");
+  }, { passive: false });
+
+  item.addEventListener("touchend", e => {
+    if (!_touchGhost) return;
+    const touch = e.changedTouches[0];
+    _touchGhost.style.display = "none";
+    const below = document.elementFromPoint(touch.clientX, touch.clientY);
+    _touchGhost.remove(); _touchGhost = null;
+    _touchDragEl && _touchDragEl.classList.remove("dragging");
+    _touchDragEl = null;
+    $$("[data-drop-zone]").forEach(z => z.classList.remove("drag-over"));
+    const zone = below && below.closest("[data-drop-zone]");
+    if (zone && _touchCtx && _isValidDrop(zone, _touchCtx)) {
+      const ctx = { ..._touchCtx }; _touchCtx = null;
+      doEquip(ctx.charId, zone.dataset.dropZone, ctx.cardId);
+    } else {
+      _touchCtx = null;
+    }
+  }, { passive: true });
+}
+
+function _moveTouchGhost(x, y) {
+  if (!_touchGhost) return;
+  _touchGhost.style.left = (x - _touchGhost.offsetWidth / 2) + "px";
+  _touchGhost.style.top = (y - _touchGhost.offsetHeight / 2) + "px";
+}
+
+function _isValidDrop(zone, ctx) {
+  if (+zone.dataset.charId !== ctx.charId) return false;
+  const dz = zone.dataset.dropZone;
+  if (dz === "weapon" && (ctx.cardType !== "weapon" || ctx.fromSlot !== null)) return false;
+  if (dz === "armor"  && (ctx.cardType !== "armor"  || ctx.fromSlot !== null)) return false;
+  if (dz === "inventory" && ctx.fromSlot === null) return false;
+  return true;
+}
+
+// ── Long-press helper ──
+
+function setupLongPress(el, callback) {
+  let timer = null;
+  let moved = false;
+  el.addEventListener("pointerdown", e => {
+    moved = false;
+    timer = setTimeout(() => { if (!moved) callback(); }, 600);
+  });
+  el.addEventListener("pointermove", () => { moved = true; clearTimeout(timer); });
+  el.addEventListener("pointerup", () => clearTimeout(timer));
+  el.addEventListener("pointercancel", () => clearTimeout(timer));
+}
+
+// ── Радиальное меню для инвентаря ──
+
+function showPartyRadialMenu(cx, cy, itemEl, mode, center = false) {
+  const charId = +itemEl.dataset.charId;
+  const cardId = +itemEl.dataset.cardId;
+  const cardType = itemEl.dataset.cardType;
+  const fromSlot = itemEl.dataset.fromSlot || null;
+  const isConsumable = itemEl.dataset.isConsumable === "true";
+  const itemName = itemEl.dataset.itemName || "";
+
+  const items = [];
+
+  if (mode === "equipped") {
+    items.push({
+      icon: "⬇️", label: "Снять",
+      action: () => doEquip(charId, fromSlot, null),
+    });
+  } else {
+    if (cardType === "weapon") {
+      items.push({ icon: "⚔️", label: "Экипировать", action: () => doEquip(charId, "weapon", cardId) });
+    } else if (cardType === "armor") {
+      items.push({ icon: "🛡️", label: "Надеть", action: () => doEquip(charId, "armor", cardId) });
+    }
+    if (isConsumable) {
+      items.push({
+        icon: "🧪", label: "Использовать",
+        action: () => toast(`«${itemName}» использован (эффект применяется через движок)`, false),
+      });
+    }
+  }
+
+  items.push({
+    icon: "ℹ️", label: "Инфо",
+    action: () => toast(itemName || "Предмет"),
+  });
+
+  if (!items.length) return;
+
+  // Если позиция не задана (long-press на мобиле) — центрируем относительно элемента
+  if (center) {
+    const rect = itemEl.getBoundingClientRect();
+    cx = rect.left + rect.width / 2;
+    cy = rect.top + rect.height / 2;
+  }
+
+  const r = 70;
+  const margin = r + 32;
+  cx = Math.max(margin, Math.min(window.innerWidth  - margin, cx));
+  cy = Math.max(margin, Math.min(window.innerHeight - margin, cy));
+
+  const menu = $("#radial-menu");
+  menu.innerHTML = "";
+
+  const centerDot = document.createElement("div");
+  centerDot.className = "radial-center";
+  centerDot.style.left = cx + "px";
+  centerDot.style.top = cy + "px";
+  menu.appendChild(centerDot);
+
+  items.forEach((item, i) => {
+    const angle = ((-90 + (360 / items.length) * i) * Math.PI) / 180;
+    const ix = cx + r * Math.cos(angle);
+    const iy = cy + r * Math.sin(angle);
+    const el = document.createElement("button");
+    el.className = "radial-item";
+    el.style.left = ix + "px";
+    el.style.top = iy + "px";
+    el.style.animationDelay = `${i * 30}ms`;
+    el.title = item.label;
+    el.innerHTML = `<span class="ri-icon">${item.icon}</span><span class="ri-label">${esc(item.label)}</span>`;
+    el.onclick = () => { closePartyRadialMenu(); item.action(); };
+    menu.appendChild(el);
+  });
+
+  menu.classList.remove("hidden");
+  setTimeout(() => document.addEventListener("pointerdown", _closePartyRadialOnce), 80);
+}
+
+function _closePartyRadialOnce(e) {
+  if (!e.target.closest(".radial-item")) closePartyRadialMenu();
+}
+function closePartyRadialMenu() {
+  $("#radial-menu").classList.add("hidden");
+  document.removeEventListener("pointerdown", _closePartyRadialOnce);
+}
+
 $("#party-refresh").onclick = initParty;
+$("#party-session-sel").onchange = async (e) => {
+  partyState.sessionId = e.target.value;
+  await loadPartyChars();
+};
 
 // ───────────────────────── привязка событий ─────────────────────────
 
@@ -1671,6 +1924,91 @@ $$(".modal-backdrop").forEach(m => m.onclick = (e) => {
 });
 
 showMode("home");
+
+// ═════════════════════════ LLM / RAG вкладка (Отладка/Админка) ═════════════════════════
+
+const LLM_FIELDS = {
+  narrator: ["base_url", "model", "api_key", "temperature"],
+  system: ["base_url", "model", "api_key", "temperature"],
+  embedder: ["model"],
+  memory: ["window_messages", "compact_threshold", "episodic_top_k", "retrieval_top_k"],
+};
+
+let _llmLoaded = false;
+
+async function loadLLMSettings() {
+  if (_llmLoaded) return;
+  _llmLoaded = true;
+  const cfg = await API.get("/api/adventure/settings");
+  for (const [sec, fields] of Object.entries(LLM_FIELDS)) {
+    fields.forEach(f => {
+      const el = $(`#llm-${sec}-${f}`);
+      if (el && cfg[sec] && cfg[sec][f] != null) el.value = cfg[sec][f];
+    });
+  }
+}
+
+function collectLLMSettings() {
+  const out = {};
+  for (const [sec, fields] of Object.entries(LLM_FIELDS)) {
+    out[sec] = {};
+    fields.forEach(f => {
+      const el = $(`#llm-${sec}-${f}`);
+      if (!el) return;
+      let v = el.value;
+      if (el.type === "number" && v !== "") v = Number(v);
+      out[sec][f] = v;
+    });
+  }
+  return out;
+}
+
+async function saveLLMSettings() {
+  const r = await fetch("/api/adventure/settings", {
+    method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(collectLLMSettings()),
+  });
+  if (!r.ok) { toast("Не удалось сохранить настройки", true); return; }
+  _llmLoaded = false; // принудительно перечитать при следующем открытии
+  toast("Настройки LLM сохранены");
+}
+
+async function testLLMSettings() {
+  const body = collectLLMSettings();
+  $("#llm-narrator-status").textContent = "проверка…";
+  $("#llm-system-status").textContent = "проверка…";
+  const r = await fetch("/api/adventure/settings/test", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json();
+  ["narrator", "system"].forEach(role => {
+    const el = $(`#llm-${role}-status`);
+    const res = data[role] || {};
+    el.textContent = res.ok ? `✓ доступно (${res.model || ""})` : `✗ ${res.error || ("статус " + res.status)}`;
+    el.className = "ai-status " + (res.ok ? "ok" : "err");
+  });
+}
+
+// Быстрый выбор провайдера — заполняет оба поля (narrator + system)
+$$(".llm-chip").forEach(chip => {
+  chip.onclick = () => {
+    const url = chip.dataset.url;
+    const model = chip.dataset.model;
+    ["narrator", "system"].forEach(role => {
+      const urlEl = $(`#llm-${role}-base_url`);
+      const modelEl = $(`#llm-${role}-model`);
+      if (urlEl) urlEl.value = url;
+      if (modelEl && model) modelEl.value = model;
+    });
+    $$(".llm-chip").forEach(c => c.classList.remove("active"));
+    chip.classList.add("active");
+    toast(`Провайдер: ${chip.textContent.trim()}`);
+  };
+});
+
+$("#llm-save").onclick = saveLLMSettings;
+$("#llm-test").onclick = testLLMSettings;
 
 // ═════════════════════════ ПРИКЛЮЧЕНИЕ (ИИ-ГМ) ═════════════════════════
 
