@@ -270,6 +270,42 @@ class Combat:
         self._fire_hit(caster, defender, result)
         return result
 
+    def _aoe_splash(
+        self,
+        caster: Combatant,
+        target: Combatant,
+        *,
+        damage_dice: str,
+        difficulty: int,
+        spell_name: str = "",
+    ) -> int:
+        """AoE splash-урон одной цели.
+
+        Активация заклинания уже произошла (основная цель поражена). Цель делает
+        спасбросок против той же сложности — при успехе получает половину урона.
+        Механика Бастиона игнорируется: взрыв накрывает площадь.
+        """
+        save_natural = roll_d20(self.rng)
+        save_total = (
+            save_natural
+            + target.mag_defense
+            + roll_modifier(target.active_effects, attack=False)
+        )
+        saved = save_total >= difficulty
+        damage = Dice.parse(damage_dice).roll(self.rng)
+        if saved:
+            damage = math.ceil(damage / 2)
+        target.take_damage(damage)
+        tag = f" «{spell_name}» [взрыв]" if spell_name else " [взрыв]"
+        self.log.append(
+            f"{caster.name}{tag} → {target.name}: "
+            f"спас d20={save_natural}+МЗ{target.mag_defense}={save_total} vs сл.{difficulty} → "
+            f"{'половина ' if saved else ''}{damage} AoE-урона ({damage_dice})"
+        )
+        if target.is_dying or target.dead:
+            fire_abilities(caster, AbilityTrigger.ON_KILL, self._ctx(caster, target), target=target)
+        return damage
+
     def cast_from_carrier(
         self, caster: Combatant, defender: Combatant, carrier_card_id: int
     ) -> Optional[SpellResult]:
@@ -277,6 +313,8 @@ class Combat:
 
         Переиспользует ``magical_attack``. Свиток (``is_consumable``) расходуется
         и исчезает из инвентаря после применения (§9).
+        Если носитель имеет ``aoe_damage_dice``, после основного удара splash-урон
+        получают все остальные живые враги (Бастион игнорируется: площадная атака).
         """
         carrier = next(
             (
@@ -297,6 +335,22 @@ class Combat:
             difficulty=carrier.spell_difficulty,
             spell_name=carrier.name,
         )
+
+        # AoE splash: если заклинание активировалось и имеет AoE-кубики
+        if result.activated and carrier.aoe_damage_dice:
+            splash_targets = [
+                c for c in self.opponents_of(caster)
+                if not c.is_dying and c is not defender
+            ]
+            for splash_target in splash_targets:
+                self._aoe_splash(
+                    caster,
+                    splash_target,
+                    damage_dice=carrier.aoe_damage_dice,
+                    difficulty=carrier.spell_difficulty,
+                    spell_name=carrier.name,
+                )
+
         # навык-заклинание не расходуется; расходуется лишь одноразовый предмет (свиток)
         if carrier.is_consumable:
             carrier.quantity -= 1

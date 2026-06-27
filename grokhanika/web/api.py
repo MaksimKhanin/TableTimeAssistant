@@ -67,6 +67,18 @@ def forms():
     return jsonify(payload)
 
 
+@api.delete("/cards/<int:card_id>")
+def delete_card(card_id: int):
+    """Удалить карточку. 404 если не найдена, 409 если на неё ссылаются другие карточки."""
+    try:
+        found = repository.delete_card(_session(), card_id)
+    except Exception as exc:
+        return jsonify({"error": f"Невозможно удалить: {exc}"}), 409
+    if not found:
+        return jsonify({"error": "карточка не найдена"}), 404
+    return "", 204
+
+
 @api.post("/cards")
 def create_card():
     """Создать карточку из данных формы. 400 + {errors} при невалидных данных."""
@@ -79,6 +91,35 @@ def create_card():
     except repository.CreateError as exc:
         return jsonify({"errors": exc.errors}), 400
     return jsonify(created), 201
+
+
+# ───────────────────────── состояние группы ─────────────────────────
+
+
+@api.get("/party")
+def party_state():
+    """Все игровые персонажи с инвентарём и экипировкой (экран состояния группы)."""
+    return jsonify(repository.get_party(_session()))
+
+
+@api.post("/characters/<int:char_id>/equip")
+def equip_character(char_id: int):
+    """Экипировать или снять предмет у персонажа.
+    Тело: {"slot": "weapon"|"armor", "card_id": int|null}"""
+    body = request.get_json(silent=True) or {}
+    slot = body.get("slot")
+    card_id = body.get("card_id")
+    try:
+        result = repository.equip_character(_session(), char_id, slot, card_id)
+    except repository.CreateError as exc:
+        return jsonify({"errors": exc.errors}), 400
+    return jsonify(result)
+
+
+@api.get("/equipment")
+def equipment():
+    """Всё оружие и броня в системе — для выбора экипировки."""
+    return jsonify(repository.list_equipment(_session()))
 
 
 # ───────────────────────── симуляция боя ─────────────────────────
