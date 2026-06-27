@@ -18,6 +18,66 @@ const API = {
   },
 };
 
+// ───────────────────────── Звуки (Web Audio API, без файлов) ─────────────────────────
+
+const SFX = (() => {
+  let _ctx = null;
+  const ac = () => {
+    if (!_ctx) _ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_ctx.state === "suspended") _ctx.resume();
+    return _ctx;
+  };
+
+  const tone = (freq, dur, type = "sine", vol = 0.22) => {
+    const c = ac(), o = c.createOscillator(), g = c.createGain();
+    o.connect(g); g.connect(c.destination);
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, c.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + dur);
+    o.start(c.currentTime); o.stop(c.currentTime + dur);
+  };
+
+  const burst = (dur, vol = 0.35, decay = 0.25) => {
+    const c = ac(), sr = c.sampleRate;
+    const buf = c.createBuffer(1, Math.ceil(sr * dur), sr);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (d.length * decay));
+    const src = c.createBufferSource(), g = c.createGain();
+    g.gain.value = vol; src.connect(g); g.connect(c.destination); src.start();
+  };
+
+  // [[freq, delayMs, dur, type?, vol?], ...]
+  const seq = (notes) => notes.forEach(([f, d, t, tp, v]) => setTimeout(() => tone(f, t, tp || "sine", v || 0.18), d));
+
+  return {
+    // ── Инвентарь ──
+    pickup()  { tone(560, 0.08, "sine", 0.16); },
+    equip()   { seq([[440, 0, 0.07, "square", 0.1], [700, 70, 0.2, "sine", 0.22]]); },
+    unequip() { tone(320, 0.13, "sine", 0.14); },
+    deny()    { seq([[210, 0, 0.09, "sawtooth", 0.14], [150, 90, 0.13, "sawtooth", 0.11]]); },
+
+    // ── Бой ──
+    hit() { burst(0.1, 0.38, 0.22); setTimeout(() => tone(160, 0.12, "square", 0.14), 18); },
+    miss() {
+      const c = ac(), o = c.createOscillator(), g = c.createGain();
+      o.connect(g); g.connect(c.destination); o.type = "sine";
+      o.frequency.setValueAtTime(310, c.currentTime);
+      o.frequency.exponentialRampToValueAtTime(90, c.currentTime + 0.2);
+      g.gain.setValueAtTime(0.13, c.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.2);
+      o.start(); o.stop(c.currentTime + 0.2);
+    },
+    kill()  { seq([[220, 0, 0.11, "sawtooth", 0.28], [155, 115, 0.16, "sawtooth", 0.22], [100, 285, 0.32, "sawtooth", 0.18]]); },
+    spell() { seq([[523, 0, 0.17, "sine", 0.14], [659, 55, 0.17, "sine", 0.14], [784, 110, 0.17, "sine", 0.14], [1047, 165, 0.22, "sine", 0.15]]); },
+    heal()  { seq([[523, 0, 0.21, "sine", 0.11], [659, 70, 0.21, "sine", 0.12], [784, 140, 0.27, "sine", 0.13]]); },
+    aoe()   { burst(0.22, 0.5, 0.14); seq([[240, 30, 0.22, "sawtooth", 0.2], [180, 140, 0.22, "sawtooth", 0.17]]); },
+
+    // ── Исход боя ──
+    victory() { seq([[523, 0, 0.13, "sine", 0.2], [659, 120, 0.13, "sine", 0.2], [784, 240, 0.13, "sine", 0.2], [1047, 360, 0.42, "sine", 0.25]]); },
+    defeat()  { seq([[280, 0, 0.22, "sine", 0.2], [230, 200, 0.22, "sine", 0.18], [180, 420, 0.4, "sine", 0.16]]); },
+  };
+})();
+
 // эмодзи-заглушка арта по типу карточки (если нет картинки)
 const TYPE_ICON = {
   character: "🧝", creature: "👹", weapon: "⚔️", armor: "🛡️",
@@ -532,6 +592,8 @@ function renderLogUpTo(idx) {
 
 function showOutcome() {
   const o = state.sim.outcome;
+  if (o.winner === "party") SFX.victory();
+  else if (o.winner === "enemy") SFX.defeat();
   const box = $("#outcome");
   let cls = "draw", txt;
   if (o.winner === "party") { cls = "win-allies"; txt = "🛡️ Победа союзников!"; }
@@ -1139,13 +1201,20 @@ async function animateBattleEvents(events) {
     appendEventToLog(log, ev);
     log.scrollTop = log.scrollHeight;
     updateRoundLabel(ev);
+
+    const logText = (ev.log || []).join(" ");
+    let soundPlayed = false;
+
     if (ev.combatants) {
       const prevHp = {};
       ib.combatants.forEach(c => { prevHp[c.uid] = c.hp; });
-      // Найти цель (тот кто потерял HP) и запустить анимацию атаки
-      let targetUid = null;
+      let targetUid = null, anyDied = false, anyHealed = false;
       ev.combatants.forEach(c => {
-        if (prevHp[c.uid] !== undefined && c.hp < prevHp[c.uid]) targetUid = c.uid;
+        if (prevHp[c.uid] !== undefined) {
+          const d = c.hp - prevHp[c.uid];
+          if (d < 0) { if (!targetUid) targetUid = c.uid; if (c.hp <= 0) anyDied = true; }
+          if (d > 0) anyHealed = true;
+        }
       });
       if (ev.actor_uid && targetUid) animateAttack(ev.actor_uid, targetUid);
       ev.combatants.forEach(c => {
@@ -1154,7 +1223,21 @@ async function animateBattleEvents(events) {
           spawnDmgFloat(c.uid, c.hp - prevHp[c.uid]);
         }
       });
+      // Звук по приоритету: смерть > AoE > лечение > заклинание/удар
+      if (anyDied)                          { SFX.kill();  soundPlayed = true; }
+      else if (logText.includes("[взрыв]")) { SFX.aoe();   soundPlayed = true; }
+      else if (anyHealed)                   { SFX.heal();  soundPlayed = true; }
+      else if (targetUid) {
+        logText.includes("кастует") ? SFX.spell() : SFX.hit();
+        soundPlayed = true;
+      }
     }
+    // Промах или провал заклинания — HP не меняется, определяем по тексту
+    if (!soundPlayed) {
+      if (logText.includes("промахивается") || logText.includes("проваливает")) SFX.miss();
+      else if (logText.includes("кастует")) SFX.spell();
+    }
+
     appendVerboseLog([ev]);
     await pause(220);
   }
@@ -1262,6 +1345,8 @@ function spawnDmgFloat(uid, delta) {
 }
 
 function showBattleOutcome(outcome) {
+  if (outcome.winner === "party") SFX.victory();
+  else if (outcome.winner === "enemy") SFX.defeat();
   const box = $("#ba-outcome");
   let cls = "draw", txt;
   if (outcome.winner === "party") { cls = "win-allies"; txt = "🛡️ Победа союзников!"; }
@@ -1406,6 +1491,7 @@ function buildCharCard(ch) {
   // Drag from equipped slot → inventory = unequip
   el.querySelectorAll("[data-from-slot]").forEach(item => {
     item.addEventListener("dragstart", e => {
+      SFX.pickup();
       _dragCtx = {
         charId: +item.dataset.charId,
         cardId: +item.dataset.cardId,
@@ -1421,6 +1507,7 @@ function buildCharCard(ch) {
   // Drag from inventory → equip slot
   el.querySelectorAll("[data-inv-item]").forEach(item => {
     item.addEventListener("dragstart", e => {
+      SFX.pickup();
       _dragCtx = {
         charId: +item.dataset.charId,
         cardId: +item.dataset.cardId,
@@ -1489,7 +1576,8 @@ function buildInvItem(it, charId) {
 
 async function doEquip(charId, slot, cardId) {
   const { ok, data } = await API.post(`/api/characters/${charId}/equip`, { slot, card_id: cardId });
-  if (!ok) { toast(data?.errors?.slot || data?.errors?.__form__ || "Ошибка при экипировке", true); return; }
+  if (!ok) { SFX.deny(); toast(data?.errors?.slot || data?.errors?.__form__ || "Ошибка при экипировке", true); return; }
+  cardId ? SFX.equip() : SFX.unequip();
   const idx = partyState.chars.findIndex(c => c.id === charId);
   if (idx !== -1) partyState.chars[idx] = data;
   renderParty();
