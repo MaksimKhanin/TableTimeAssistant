@@ -93,6 +93,22 @@ def create_card():
     return jsonify(created), 201
 
 
+@api.patch("/cards/<int:card_id>")
+def update_card(card_id: int):
+    """Обновить карточку по id. 400 + {errors} при невалидных данных, 404 если не найдена."""
+    body = request.get_json(silent=True) or {}
+    card_type = body.get("card_type")
+    if card_type not in schema.CARD_FORMS:
+        return jsonify({"errors": {"__form__": "Не указан корректный тип карточки"}}), 400
+    try:
+        updated = repository.update_card(_session(), card_id, card_type, body)
+    except repository.UpdateError as exc:
+        return jsonify({"errors": exc.errors}), 400
+    if updated is None:
+        return jsonify({"error": "карточка не найдена"}), 404
+    return jsonify(updated)
+
+
 # ───────────────────────── состояние группы ─────────────────────────
 
 

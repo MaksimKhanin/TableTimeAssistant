@@ -12,6 +12,13 @@ const API = {
     });
     return { ok: r.ok, status: r.status, data: await r.json() };
   },
+  async patch(url, body) {
+    const r = await fetch(url, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return { ok: r.ok, status: r.status, data: await r.json() };
+  },
   async delete(url) {
     const r = await fetch(url, { method: "DELETE" });
     return { ok: r.ok, status: r.status };
@@ -121,6 +128,7 @@ const state = {
   categories: null, currentCat: null, forms: null,
   roster: null, teams: { enemies: [], allies: [] },
   sim: null, step: 0, timer: null,
+  editingCardId: null,
 };
 
 // ───────────────────────── АДМИНКА ─────────────────────────
@@ -224,9 +232,11 @@ function gameCard(card, idx) {
   el.className = "game-card";
   el.style.animationDelay = `${Math.min(idx * 30, 300)}ms`;
   const icon = card.image_url ? "" : (TYPE_ICON[card.card_type] || "❓");
+  const price = card.fields?.price;
   el.innerHTML = `
     <div class="card-art" style="${artStyle(card)}">
       ${icon}
+      ${price != null ? `<span class="badge-price">🪙 ${price}</span>` : ""}
       ${card.is_unique ? '<span class="badge-unique">уник.</span>' : ""}
     </div>
     <div class="card-body">
@@ -308,6 +318,7 @@ function showDetail(card) {
   if (card.abilities && card.abilities.length) {
     rows.push(`<div class="k">Способности</div><div>${card.abilities.map(esc).join(", ")}</div>`);
   }
+  const canEdit = state.forms && state.forms.some(f => f.card_type === card.card_type);
   $("#detail-body").innerHTML = `
     <button class="modal-close detail-close-btn" id="detail-close">✕</button>
     <div class="detail-art" style="${artStyle(card)}">${icon}
@@ -319,9 +330,13 @@ function showDetail(card) {
       <div class="kv">${rows.join("")}</div>
     </div>
     <div class="detail-foot">
+      ${canEdit ? `<button class="btn-edit" id="detail-edit-btn">✏️ Редактировать</button>` : ""}
       <button class="btn-danger" id="detail-delete">🗑 Удалить</button>
     </div>`;
   $("#detail-close").onclick = () => closeModal("#detail-modal");
+  if (canEdit) {
+    $("#detail-edit-btn").onclick = () => { closeModal("#detail-modal"); openEditForm(card); };
+  }
   $("#detail-delete").onclick = async () => {
     if (!confirm(`Удалить «${esc(card.name)}»? Это действие необратимо.`)) return;
     const { ok, status } = await API.delete(`/api/cards/${card.id}`);
@@ -329,7 +344,7 @@ function showDetail(card) {
       closeModal("#detail-modal");
       loadCards();
     } else {
-      alert("Не удалось удалить: возможно, на эту карточку ссылаются другие (например, она экипирована).");
+      alert("Не удалось удалить: возможно, на неё ссылаются другие (например, она экипирована).");
     }
   };
   openModal("#detail-modal");
@@ -338,9 +353,11 @@ function showDetail(card) {
 // ───────────────────────── форма добавления ─────────────────────────
 
 function openAddForm() {
+  state.editingCardId = null;
   const cat = categoryByKey(state.currentCat);
   const typeSel = $("#form-type");
   typeSel.innerHTML = "";
+  typeSel.disabled = false;
   const allowed = state.forms.filter(fm => cat.creatable.includes(fm.card_type));
   allowed.forEach(fm => {
     const o = document.createElement("option");
@@ -350,21 +367,41 @@ function openAddForm() {
   typeSel.onchange = () => renderForm(typeSel.value);
   renderForm(allowed[0].card_type);
   $("#form-error").classList.add("hidden");
+  $("#form-submit").textContent = "Создать";
+  openModal("#modal");
+}
+
+function openEditForm(card) {
+  state.editingCardId = card.id;
+  const typeSel = $("#form-type");
+  typeSel.innerHTML = "";
+  typeSel.disabled = true;
+  const form = formByType(card.card_type);
+  const o = document.createElement("option");
+  o.value = card.card_type; o.textContent = `${form.icon} ${form.label}`;
+  typeSel.appendChild(o);
+  typeSel.onchange = null;
+  renderForm(card.card_type, card.form_values || {});
+  $("#modal-title").textContent = `Редактировать: ${esc(card.name)}`;
+  $("#form-error").classList.add("hidden");
+  $("#form-submit").textContent = "Сохранить";
   openModal("#modal");
 }
 
 function formByType(t) { return state.forms.find(f => f.card_type === t); }
 
-function renderForm(cardType) {
+function renderForm(cardType, values = {}) {
   const form = formByType(cardType);
-  $("#modal-title").textContent = `Новая сущность: ${form.label}`;
+  if (!state.editingCardId) {
+    $("#modal-title").textContent = `Новая сущность: ${form.label}`;
+  }
   $("#form-type-hint").textContent = form.note || "";
   const root = $("#entity-form");
   root.innerHTML = "";
-  form.fields.forEach(fld => root.appendChild(renderField(fld)));
+  form.fields.forEach(fld => root.appendChild(renderField(fld, values[fld.name])));
 }
 
-function renderField(fld) {
+function renderField(fld, initialValue = undefined) {
   const wrap = document.createElement("label");
   const isCheck = fld.type === "bool";
   const isWide = fld.type === "text";
@@ -375,22 +412,24 @@ function renderField(fld) {
   if (fld.type === "bool") {
     control = document.createElement("input");
     control.type = "checkbox";
-    if (fld.default) control.checked = true;
+    control.checked = initialValue !== undefined ? Boolean(initialValue) : Boolean(fld.default);
   } else if (fld.type === "choice") {
     control = document.createElement("select");
     const blank = document.createElement("option");
     blank.value = ""; blank.textContent = fld.required ? "— выберите —" : "— нет —";
     control.appendChild(blank);
+    const activeValue = initialValue !== undefined ? initialValue : fld.default;
     (fld.choices || []).forEach(c => {
       const o = document.createElement("option");
       o.value = c.value; o.textContent = c.label;
-      if (String(c.value) === String(fld.default)) o.selected = true;
+      if (activeValue != null && String(c.value) === String(activeValue)) o.selected = true;
       control.appendChild(o);
     });
   } else {
     control = document.createElement("input");
     control.type = fld.type === "int" ? "number" : "text";
-    if (fld.default !== null && fld.default !== undefined) control.value = fld.default;
+    const val = initialValue !== undefined ? initialValue : fld.default;
+    if (val !== null && val !== undefined) control.value = val;
     if (fld.type === "dice") control.placeholder = "напр. 1d8";
     if (fld.min != null) control.min = fld.min;
     if (fld.max != null) control.max = fld.max;
@@ -436,19 +475,12 @@ function collectForm() {
   return body;
 }
 
-async function submitForm() {
-  const body = collectForm();
-  const { ok, data } = await API.post("/api/cards", body);
-  // сбрасываем прежние ошибки
+function _clearFormErrors() {
   $$("#entity-form .field").forEach(w => { w.classList.remove("invalid"); const e = $(".err", w); if (e) e.textContent = ""; });
   $("#form-error").classList.add("hidden");
-  if (ok) {
-    closeModal("#modal");
-    toast(`Создано: ${data.name}`);
-    if (state.currentCat) loadCards();
-    return;
-  }
-  const errors = data.errors || {};
+}
+
+function _showFormErrors(errors) {
   Object.entries(errors).forEach(([field, msg]) => {
     if (field === "__form__") {
       const fe = $("#form-error");
@@ -458,6 +490,33 @@ async function submitForm() {
     const wrap = $(`#entity-form .field[data-name="${field}"]`);
     if (wrap) { wrap.classList.add("invalid"); const e = $(".err", wrap); if (e) e.textContent = msg; }
   });
+}
+
+async function submitForm() {
+  if (state.editingCardId != null) { await submitEditForm(state.editingCardId); return; }
+  const body = collectForm();
+  const { ok, data } = await API.post("/api/cards", body);
+  _clearFormErrors();
+  if (ok) {
+    closeModal("#modal");
+    toast(`Создано: ${data.name}`);
+    if (state.currentCat) loadCards();
+    return;
+  }
+  _showFormErrors(data.errors || {});
+}
+
+async function submitEditForm(cardId) {
+  const body = collectForm();
+  const { ok, data } = await API.patch(`/api/cards/${cardId}`, body);
+  _clearFormErrors();
+  if (ok) {
+    closeModal("#modal");
+    toast(`Сохранено: ${data.name}`);
+    if (state.currentCat) loadCards();
+    return;
+  }
+  _showFormErrors(data.errors || {});
 }
 
 // ───────────────────────── СИМУЛЯЦИЯ ─────────────────────────
@@ -1589,15 +1648,27 @@ $("#party-refresh").onclick = initParty;
 
 // ───────────────────────── привязка событий ─────────────────────────
 
+function resetFormModal() {
+  state.editingCardId = null;
+  $("#form-type").disabled = false;
+  $("#form-submit").textContent = "Создать";
+  closeModal("#modal");
+}
+
 $("#add-btn").onclick = openAddForm;
-$("#modal-close").onclick = () => closeModal("#modal");
-$("#form-cancel").onclick = () => closeModal("#modal");
+$("#modal-close").onclick = resetFormModal;
+$("#form-cancel").onclick = resetFormModal;
 $("#form-submit").onclick = submitForm;
 $("#sim-go").onclick = runSim;
 $("#pb-prev").onclick = () => stepBy(-1);
 $("#pb-next").onclick = () => stepBy(1);
 $("#pb-play").onclick = togglePlay;
-$$(".modal-backdrop").forEach(m => m.onclick = (e) => { if (e.target === m) m.classList.add("hidden"); });
+$$(".modal-backdrop").forEach(m => m.onclick = (e) => {
+  if (e.target === m) {
+    if (m.id === "modal") resetFormModal();
+    else m.classList.add("hidden");
+  }
+});
 
 showMode("home");
 

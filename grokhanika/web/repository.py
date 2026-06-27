@@ -251,6 +251,14 @@ class CreateError(Exception):
         self.errors = errors
 
 
+class UpdateError(Exception):
+    """Ошибки при обновлении карточки. ``errors`` — карта {поле: сообщение}."""
+
+    def __init__(self, errors: dict) -> None:
+        super().__init__("ошибка обновления карточки")
+        self.errors = errors
+
+
 def delete_card(session: Session, card_id: int) -> bool:
     """Удалить карточку по id. Возвращает True если удалена, False если не найдена."""
     card = session.get(Card, card_id)
@@ -350,3 +358,30 @@ def delete_lore(session: Session, lore_id: int) -> bool:
     session.delete(entry)
     session.commit()
     return True
+
+
+def update_card(session: Session, card_id: int, card_type: str, payload: dict) -> Optional[dict]:
+    """Обновить существующую карточку. Бросает :class:`UpdateError` при ошибках."""
+    card = session.get(Card, card_id)
+    if card is None:
+        return None
+
+    if card.card_type != card_type:
+        raise UpdateError({"__form__": "Нельзя изменить тип карточки"})
+
+    cleaned, errors = schema.validate_payload(card_type, payload)
+    if errors:
+        raise UpdateError(errors)
+
+    for fld, ref_model in _REFERENCE_FIELDS.items():
+        if fld in cleaned:
+            ref = session.get(ref_model, cleaned[fld])
+            if ref is None:
+                raise UpdateError({fld: "Карточка не найдена"})
+
+    for k, v in cleaned.items():
+        setattr(card, k, v)
+
+    session.commit()
+    _index_card_safe(session, card)  # переиндексировать после правки (для RAG)
+    return serialize_card(card, full=True)

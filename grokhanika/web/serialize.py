@@ -174,6 +174,92 @@ def _type_fields(card: Card) -> dict:
     return {}
 
 
+# ───────────────────────── значения полей для формы редактирования ─────────────────────────
+
+
+def _form_values(card: Card) -> dict:
+    """Текущие значения карточки, ключи == имена полей формы (для предзаполнения при редактировании)."""
+    base: dict = {
+        "name": card.name,
+        "description": card.description or "",
+        "image_id": card.image_id or "",
+        "is_unique": card.is_unique,
+    }
+    if isinstance(card, Character):
+        base.update({
+            "is_player": card.is_player,
+            "is_sentient": card.is_sentient,
+            "base_strength": card.base_strength,
+            "base_dexterity": card.base_dexterity,
+            "base_wisdom": card.base_wisdom,
+            "base_charisma": card.base_charisma,
+            "money": card.money,
+            "current_hp": card.current_hp,
+            "equipped_weapon_id": card.equipped_weapon_id,
+            "equipped_armor_id": card.equipped_armor_id,
+        })
+    elif isinstance(card, Creature):
+        base.update({
+            "is_sentient": card.is_sentient,
+            "hp": card.hp,
+            "dexterity": card.dexterity,
+            "phys_defense": card.phys_defense,
+            "mag_defense": card.mag_defense,
+            "mental_defense": card.mental_defense,
+            "phys_damage_dice": card.phys_damage_dice,
+            "strength": card.strength,
+            "charisma": card.charisma,
+            "wisdom": card.wisdom,
+        })
+    elif isinstance(card, Weapon):
+        base.update({
+            "damage_dice": card.damage_dice,
+            "str_requirement": card.str_requirement,
+            "dex_requirement": card.dex_requirement,
+            "is_ranged": card.is_ranged,
+            "price": card.price,
+        })
+    elif isinstance(card, Armor):
+        base.update({
+            "phys_def_bonus": card.phys_def_bonus,
+            "str_requirement": card.str_requirement,
+            "dex_requirement": card.dex_requirement,
+            "price": card.price,
+        })
+    elif isinstance(card, Item):
+        base.update({
+            "is_consumable": card.is_consumable,
+            "heal_dice": card.heal_dice,
+            "grants_skill_id": card.grants_skill_id,
+            "price": card.price,
+        })
+    elif isinstance(card, (SpellBook, Scroll)):
+        base.update({
+            "spell_name": card.spell_name,
+            "damage_dice": card.damage_dice,
+            "heal_dice": card.heal_dice,
+            "difficulty": card.difficulty,
+            "attack_stat": card.attack_stat,
+            "price": card.price,
+        })
+    elif isinstance(card, Skill):
+        base.update({
+            "is_passive": card.is_passive,
+            "spell_name": card.spell_name or "",
+            "damage_dice": card.damage_dice,
+            "heal_dice": card.heal_dice,
+            "difficulty": card.difficulty,
+            "attack_stat": card.attack_stat,
+            "price": card.price,
+        })
+    elif isinstance(card, Instrument):
+        base.update({
+            "price": card.price,
+            "grants_skill_id": card.grants_skill_id,
+        })
+    return base
+
+
 # ───────────────────────── публичные сериализаторы ─────────────────────────
 
 # человекочитаемые имена типов
@@ -206,6 +292,7 @@ def serialize_card(card: Card, *, full: bool = True) -> dict:
     }
     if full:
         data["fields"] = _type_fields(card)
+        data["form_values"] = _form_values(card)
         stats = _stat_block(card)
         if stats is not None:
             data["stats"] = stats
