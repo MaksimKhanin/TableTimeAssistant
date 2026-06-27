@@ -14,6 +14,7 @@
       <button class="mode-btn" data-mode="admin">🛠️ Отладка / Админка</button>
       <button class="mode-btn" data-mode="sim">⚔️ Имитация боя</button>
       <button class="mode-btn" data-mode="adv">📖 Приключение</button>
+      <button class="mode-btn" data-mode="party">👥 Группа</button>
     </nav>
   </header>
 
@@ -39,6 +40,11 @@
             <span class="big-ico">📖</span>
             <span class="big-title">Приключение</span>
             <span class="big-desc">Текстовое приключение с ИИ-гейм-мастером: завязка, персонажи и живое повествование</span>
+          </button>
+          <button class="big-btn" data-goto="party">
+            <span class="big-ico">👥</span>
+            <span class="big-title">Состояние группы</span>
+            <span class="big-desc">Инвентарь и экипировка персонажей — оружие, доспехи, предметы, навыки</span>
           </button>
         </div>
       </div>
@@ -228,6 +234,15 @@
           </div>
         </aside>
       </div>
+    </section>
+
+    <!-- ───────── Состояние группы ───────── -->
+    <section class="view hidden" data-view="party">
+      <div class="party-head">
+        <h2>👥 Состояние группы</h2>
+        <button class="btn-secondary" id="party-refresh">↻ Обновить</button>
+      </div>
+      <div class="party-grid" id="party-grid"></div>
     </section>
   </main>
 
