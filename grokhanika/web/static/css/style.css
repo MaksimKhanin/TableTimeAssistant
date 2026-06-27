@@ -724,7 +724,7 @@ main { padding: 28px 24px 64px; max-width: 1280px; margin: 0 auto; }
 /* ───────── Состояние группы ───────── */
 .view[data-view="party"] {
   padding: 24px;
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
 }
 .party-head {
@@ -737,7 +737,7 @@ main { padding: 28px 24px 64px; max-width: 1280px; margin: 0 auto; }
 
 .party-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
   gap: 20px;
 }
 
@@ -746,177 +746,183 @@ main { padding: 28px 24px 64px; max-width: 1280px; margin: 0 auto; }
   border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
-.party-char-head {
+
+/* Шапка */
+.pch-head {
   background: var(--panel-2);
   padding: 14px 16px;
   border-bottom: 1px solid var(--line);
 }
-.party-char-name {
-  font-size: 17px;
-  font-weight: 700;
-  margin-bottom: 2px;
-}
-.party-char-desc {
-  font-size: 12px;
-  color: var(--muted);
-  margin-bottom: 10px;
-}
-.party-hp-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-.party-hp-bar {
-  flex: 1;
-  height: 8px;
-  background: var(--line);
-  border-radius: 4px;
-  overflow: hidden;
-}
-.party-hp-fill {
-  height: 100%;
-  background: var(--good);
-  border-radius: 4px;
-  transition: width .4s;
-}
-.party-hp-fill.low { background: var(--accent); }
-.party-hp-fill.crit { background: var(--danger); }
-.party-hp-label {
-  font-size: 12px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-.party-stats {
-  display: flex;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--muted);
-}
-.party-stat { display: flex; gap: 3px; align-items: center; }
-.party-stat b { color: var(--text); }
-.party-money {
-  font-size: 12px;
-  color: var(--accent);
-  margin-top: 4px;
-}
+.pch-name { font-size: 18px; font-weight: 700; margin-bottom: 2px; }
+.pch-desc { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.pch-hp-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.pch-hp-bar { flex: 1; height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+.pch-hp-fill { height: 100%; background: var(--good); border-radius: 4px; transition: width .4s; }
+.pch-hp-fill.low { background: var(--accent); }
+.pch-hp-fill.crit { background: var(--danger); }
+.pch-hp-label { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.pch-money { font-size: 12px; color: var(--accent); }
 
-.party-section {
-  padding: 12px 16px;
+/* Основное тело: оружие | доспех | характеристики */
+.pch-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.1fr;
   border-bottom: 1px solid var(--line);
 }
-.party-section:last-child { border-bottom: none; }
-.party-section-title {
+.pch-equip-zone {
+  padding: 12px;
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+}
+.pch-stats-col {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+}
+.pch-slot-header {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 1px;
   color: var(--muted);
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
-/* Слоты экипировки */
-.equip-slot {
+/* Drop-слот экипировки */
+.pch-drop-slot {
+  flex: 1;
+  min-height: 90px;
+  border: 2px dashed var(--line);
+  border-radius: 8px;
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--line);
+  align-items: stretch;
+  transition: border-color .15s, background .15s;
 }
-.equip-slot:last-child { border-bottom: none; padding-bottom: 0; }
-.equip-ico { font-size: 18px; flex-shrink: 0; }
-.equip-info { flex: 1; min-width: 0; }
-.equip-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.equip-sub { font-size: 11px; color: var(--muted); }
-.equip-empty { font-size: 13px; color: var(--muted); font-style: italic; flex: 1; }
-.equip-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.pch-drop-slot.drag-over {
+  border-color: var(--accent);
+  background: rgba(123, 92, 255, .08);
+}
+.pch-slot-empty {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+  pointer-events: none;
+  padding: 8px;
+}
+.pch-slot-hint { font-size: 10px; opacity: .5; }
 
-.btn-xs {
-  background: var(--panel-2);
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  padding: 4px 8px;
+/* Экипированный предмет */
+.pch-equipped-item {
+  width: 100%;
+  padding: 8px 10px;
+  cursor: grab;
+  user-select: none;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  transition: background .15s;
+}
+.pch-equipped-item:hover { background: rgba(255,255,255,.04); }
+.pch-equipped-item.dragging { opacity: .45; cursor: grabbing; }
+.pch-eqi-name { font-size: 13px; font-weight: 600; }
+.pch-eqi-sub { font-size: 11px; color: var(--accent); margin-top: 3px; }
+.pch-eqi-desc { font-size: 11px; color: var(--muted); margin-top: 2px; line-height: 1.3; }
+
+/* Характеристики */
+.pch-stats { display: flex; flex-direction: column; gap: 4px; }
+.pch-stat-row { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.pch-sico { width: 18px; text-align: center; font-size: 13px; }
+.pch-stat-row b { min-width: 22px; font-size: 14px; }
+.pch-sname { color: var(--muted); font-size: 11px; }
+
+.pch-skills-title {
   font-size: 11px;
-  cursor: pointer;
-  transition: .15s;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin-top: 10px;
+  margin-bottom: 5px;
 }
-.btn-xs:hover { background: var(--panel); border-color: var(--accent); color: var(--accent); }
-.btn-xs.btn-unequip:hover { border-color: var(--danger); color: var(--danger); }
-
-/* Инвентарь */
-.inv-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 6px 0;
-  border-bottom: 1px solid rgba(56, 51, 77, .5);
-}
-.inv-item:last-child { border-bottom: none; padding-bottom: 0; }
-.inv-ico { font-size: 15px; flex-shrink: 0; margin-top: 1px; }
-.inv-info { flex: 1; min-width: 0; }
-.inv-name { font-size: 13px; font-weight: 600; }
-.inv-desc { font-size: 11px; color: var(--muted); margin-top: 1px; }
-.inv-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-.inv-tag {
+.pch-skill { display: flex; align-items: center; gap: 5px; font-size: 12px; padding: 2px 0; }
+.pch-skill-tag {
   font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 6px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--panel-2);
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+/* Инвентарь — зона для перетаскивания */
+.pch-inv-zone {
+  padding: 12px 14px;
+  min-height: 60px;
+  transition: background .15s, outline .15s;
+}
+.pch-inv-zone.drag-over {
+  background: rgba(91, 191, 106, .07);
+  outline: 2px dashed rgba(91, 191, 106, .4);
+  outline-offset: -4px;
+}
+.pch-inv-header {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.pch-inv-items { display: flex; flex-wrap: wrap; gap: 6px; }
+.pch-inv-empty { font-size: 13px; color: var(--muted); font-style: italic; }
+
+.pch-inv-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.pch-inv-item.equippable {
+  cursor: grab;
+  border-color: rgba(123, 92, 255, .35);
+}
+.pch-inv-item.equippable:hover {
+  border-color: var(--accent);
+  background: rgba(123, 92, 255, .07);
+}
+.pch-inv-item.dragging { opacity: .45; cursor: grabbing; }
+.pch-inv-ico { font-size: 14px; flex-shrink: 0; }
+.pch-inv-info { min-width: 0; }
+.pch-inv-name { font-weight: 600; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pch-inv-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
+.pch-tag {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 5px;
   background: var(--panel-2);
   border: 1px solid var(--line);
   color: var(--muted);
 }
-.inv-tag.passive { background: rgba(91, 191, 106, .12); border-color: rgba(91, 191, 106, .3); color: var(--good); }
-.inv-tag.spell { background: rgba(123, 92, 255, .12); border-color: rgba(123, 92, 255, .3); color: var(--accent-2); }
-.inv-tag.heal { background: rgba(78, 163, 226, .12); border-color: rgba(78, 163, 226, .3); color: var(--ally); }
+.pch-tag.passive { background: rgba(91, 191, 106, .12); border-color: rgba(91, 191, 106, .3); color: var(--good); }
+.pch-tag.spell { background: rgba(123, 92, 255, .12); border-color: rgba(123, 92, 255, .3); color: var(--accent-2); }
+.pch-tag.heal { background: rgba(78, 163, 226, .12); border-color: rgba(78, 163, 226, .3); color: var(--ally); }
 
-/* Навыки */
-.skill-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 6px 0;
-  border-bottom: 1px solid rgba(56, 51, 77, .5);
-}
-.skill-item:last-child { border-bottom: none; padding-bottom: 0; }
-.skill-info { flex: 1; }
-.skill-name { font-size: 13px; font-weight: 600; }
-.skill-desc { font-size: 11px; color: var(--muted); margin-top: 1px; }
-.skill-tag {
-  font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 6px;
-  background: var(--panel-2);
-  color: var(--muted);
-  white-space: nowrap;
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-/* Модалка выбора экипировки */
-.modal-equip { width: 460px; max-height: 80vh; display: flex; flex-direction: column; }
-.modal-equip .modal-body { overflow-y: auto; }
-.equip-pick-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  cursor: pointer;
-  transition: .15s;
-  margin-bottom: 4px;
-}
-.equip-pick-item:hover { background: var(--panel-2); }
-.equip-pick-info { flex: 1; }
-.equip-pick-name { font-size: 14px; font-weight: 600; }
-.equip-pick-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
-.equip-pick-price { font-size: 12px; color: var(--accent); }
-.equip-unequip-row {
-  padding: 10px 12px;
-  border-top: 1px solid var(--line);
-  margin-top: 8px;
-}
-
-@media (max-width: 860px) {
+@media (max-width: 900px) {
   .party-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  .pch-body { grid-template-columns: 1fr 1fr; }
+  .pch-stats-col { grid-column: span 2; border-top: 1px solid var(--line); }
 }

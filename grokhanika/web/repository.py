@@ -168,26 +168,45 @@ def get_party(session: Session) -> list[dict]:
 
 
 def equip_character(session: Session, char_id: int, slot: str, card_id: Optional[int]) -> dict:
-    """Экипировать или снять оружие/броню у персонажа. ``card_id=None`` — снять."""
+    """Экипировать или снять оружие/броню у персонажа.
+    card_id=None → снять в инвентарь.
+    card_id указан → взять только из собственного инвентаря персонажа;
+    старый экипированный предмет автоматически уходит в инвентарь.
+    """
     char = session.get(Character, char_id)
     if char is None:
         raise CreateError({"__form__": "Персонаж не найден"})
-    if slot == "weapon":
-        if card_id is None:
-            char.equipped_weapon_id = None
-        else:
-            if session.get(Weapon, card_id) is None:
-                raise CreateError({"slot": "Оружие не найдено"})
-            char.equipped_weapon_id = card_id
-    elif slot == "armor":
-        if card_id is None:
-            char.equipped_armor_id = None
-        else:
-            if session.get(Armor, card_id) is None:
-                raise CreateError({"slot": "Броня не найдена"})
-            char.equipped_armor_id = card_id
-    else:
+    if slot not in ("weapon", "armor"):
         raise CreateError({"slot": f"Неизвестный слот: {slot!r}"})
+
+    old_item = char.equipped_weapon if slot == "weapon" else char.equipped_armor
+
+    if card_id is None:
+        # Снять → вернуть в инвентарь
+        if old_item is not None:
+            if old_item not in char.inventory:
+                char.inventory.append(old_item)
+            if slot == "weapon":
+                char.equipped_weapon_id = None
+            else:
+                char.equipped_armor_id = None
+    else:
+        # Экипировать: только из собственного инвентаря
+        inv_card = next((it for it in char.inventory if it.id == card_id), None)
+        if inv_card is None:
+            raise CreateError({"slot": "Предмет не найден в инвентаре персонажа"})
+        if slot == "weapon" and not isinstance(inv_card, Weapon):
+            raise CreateError({"slot": "В слот оружия можно экипировать только оружие"})
+        if slot == "armor" and not isinstance(inv_card, Armor):
+            raise CreateError({"slot": "В слот доспеха можно экипировать только броню"})
+        char.inventory.remove(inv_card)
+        if old_item is not None and old_item not in char.inventory:
+            char.inventory.append(old_item)
+        if slot == "weapon":
+            char.equipped_weapon_id = card_id
+        else:
+            char.equipped_armor_id = card_id
+
     session.commit()
     session.refresh(char)
     return serialize_character_for_party(char)
