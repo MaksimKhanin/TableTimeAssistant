@@ -25,7 +25,7 @@ from ..db.models import (
 )
 from ..enums import CardType
 from . import schema
-from .serialize import serialize_ability, serialize_card
+from .serialize import serialize_ability, serialize_card, serialize_character_for_party
 
 # конструкторы карточек по типу (имена полей формы == имена колонок ORM)
 _MODELS: dict[str, type[Card]] = {
@@ -156,6 +156,78 @@ def choices_for(session: Session, source: str) -> list[dict]:
 # ───────────────────────── создание карточки ─────────────────────────
 
 
+def get_party(session: Session) -> list[dict]:
+    """Все игровые персонажи для экрана состояния группы."""
+    chars = (
+        session.execute(select(Character).where(Character.is_player == True))
+        .scalars()
+        .all()
+    )
+    chars.sort(key=lambda c: c.name.lower())
+    return [serialize_character_for_party(c) for c in chars]
+
+
+def equip_character(session: Session, char_id: int, slot: str, card_id: Optional[int]) -> dict:
+    """Экипировать или снять оружие/броню у персонажа.
+    card_id=None → снять в инвентарь.
+    card_id указан → взять только из собственного инвентаря персонажа;
+    старый экипированный предмет автоматически уходит в инвентарь.
+    """
+    char = session.get(Character, char_id)
+    if char is None:
+        raise CreateError({"__form__": "Персонаж не найден"})
+    if slot not in ("weapon", "armor"):
+        raise CreateError({"slot": f"Неизвестный слот: {slot!r}"})
+
+    old_item = char.equipped_weapon if slot == "weapon" else char.equipped_armor
+
+    if card_id is None:
+        # Снять → вернуть в инвентарь
+        if old_item is not None:
+            if old_item not in char.inventory:
+                char.inventory.append(old_item)
+            if slot == "weapon":
+                char.equipped_weapon_id = None
+            else:
+                char.equipped_armor_id = None
+    else:
+        # Экипировать: только из собственного инвентаря
+        inv_card = next((it for it in char.inventory if it.id == card_id), None)
+        if inv_card is None:
+            raise CreateError({"slot": "Предмет не найден в инвентаре персонажа"})
+        if slot == "weapon" and not isinstance(inv_card, Weapon):
+            raise CreateError({"slot": "В слот оружия можно экипировать только оружие"})
+        if slot == "armor" and not isinstance(inv_card, Armor):
+            raise CreateError({"slot": "В слот доспеха можно экипировать только броню"})
+        char.inventory.remove(inv_card)
+        if old_item is not None and old_item not in char.inventory:
+            char.inventory.append(old_item)
+        if slot == "weapon":
+            char.equipped_weapon_id = card_id
+        else:
+            char.equipped_armor_id = card_id
+
+    session.commit()
+    session.refresh(char)
+    return serialize_character_for_party(char)
+
+
+def list_equipment(session: Session) -> dict:
+    """Все оружие и броня в системе — для выбора экипировки."""
+    weapons = (
+        session.execute(select(Weapon).order_by(Weapon.name)).scalars().all()
+    )
+    armor = (
+        session.execute(select(Armor).order_by(Armor.name)).scalars().all()
+    )
+    return {
+        "weapons": [{"id": w.id, "name": w.name, "damage_dice": w.damage_dice,
+                     "description": w.description or "", "price": w.price} for w in weapons],
+        "armor": [{"id": a.id, "name": a.name, "phys_def_bonus": a.phys_def_bonus,
+                   "description": a.description or "", "price": a.price} for a in armor],
+    }
+
+
 class CreateError(Exception):
     """Ошибки валидации формы. ``errors`` — карта {поле: сообщение}."""
 
@@ -170,6 +242,16 @@ class UpdateError(Exception):
     def __init__(self, errors: dict) -> None:
         super().__init__("ошибка обновления карточки")
         self.errors = errors
+
+
+def delete_card(session: Session, card_id: int) -> bool:
+    """Удалить карточку по id. Возвращает True если удалена, False если не найдена."""
+    card = session.get(Card, card_id)
+    if card is None:
+        return False
+    session.delete(card)
+    session.commit()
+    return True
 
 
 def create_card(session: Session, card_type: str, payload: dict) -> dict:

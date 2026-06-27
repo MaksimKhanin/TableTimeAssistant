@@ -198,6 +198,8 @@ class _SpellCarrierMixin:
 
     spell_name: Mapped[str] = mapped_column(String(120), default="")
     damage_dice: Mapped[Optional[str]] = mapped_column(String(8), default=None)
+    # кубики splash-урона для AoE-заклинаний (None = одиночная цель)
+    aoe_damage_dice: Mapped[Optional[str]] = mapped_column(String(8), default=None)
     heal_dice: Mapped[Optional[str]] = mapped_column(String(8), default=None)
     difficulty: Mapped[Optional[int]] = mapped_column(Integer, default=None)
     attack_stat: Mapped[str] = mapped_column(String(12), default="wisdom")

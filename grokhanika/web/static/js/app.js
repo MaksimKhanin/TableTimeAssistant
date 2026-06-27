@@ -19,7 +19,71 @@ const API = {
     });
     return { ok: r.ok, status: r.status, data: await r.json() };
   },
+  async delete(url) {
+    const r = await fetch(url, { method: "DELETE" });
+    return { ok: r.ok, status: r.status };
+  },
 };
+
+// ───────────────────────── Звуки (Web Audio API, без файлов) ─────────────────────────
+
+const SFX = (() => {
+  let _ctx = null;
+  const ac = () => {
+    if (!_ctx) _ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_ctx.state === "suspended") _ctx.resume();
+    return _ctx;
+  };
+
+  const tone = (freq, dur, type = "sine", vol = 0.22) => {
+    const c = ac(), o = c.createOscillator(), g = c.createGain();
+    o.connect(g); g.connect(c.destination);
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, c.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + dur);
+    o.start(c.currentTime); o.stop(c.currentTime + dur);
+  };
+
+  const burst = (dur, vol = 0.35, decay = 0.25) => {
+    const c = ac(), sr = c.sampleRate;
+    const buf = c.createBuffer(1, Math.ceil(sr * dur), sr);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (d.length * decay));
+    const src = c.createBufferSource(), g = c.createGain();
+    g.gain.value = vol; src.connect(g); g.connect(c.destination); src.start();
+  };
+
+  // [[freq, delayMs, dur, type?, vol?], ...]
+  const seq = (notes) => notes.forEach(([f, d, t, tp, v]) => setTimeout(() => tone(f, t, tp || "sine", v || 0.18), d));
+
+  return {
+    // ── Инвентарь ──
+    pickup()  { tone(560, 0.08, "sine", 0.16); },
+    equip()   { seq([[440, 0, 0.07, "square", 0.1], [700, 70, 0.2, "sine", 0.22]]); },
+    unequip() { tone(320, 0.13, "sine", 0.14); },
+    deny()    { seq([[210, 0, 0.09, "sawtooth", 0.14], [150, 90, 0.13, "sawtooth", 0.11]]); },
+
+    // ── Бой ──
+    hit() { burst(0.1, 0.38, 0.22); setTimeout(() => tone(160, 0.12, "square", 0.14), 18); },
+    miss() {
+      const c = ac(), o = c.createOscillator(), g = c.createGain();
+      o.connect(g); g.connect(c.destination); o.type = "sine";
+      o.frequency.setValueAtTime(310, c.currentTime);
+      o.frequency.exponentialRampToValueAtTime(90, c.currentTime + 0.2);
+      g.gain.setValueAtTime(0.13, c.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.2);
+      o.start(); o.stop(c.currentTime + 0.2);
+    },
+    kill()  { seq([[220, 0, 0.11, "sawtooth", 0.28], [155, 115, 0.16, "sawtooth", 0.22], [100, 285, 0.32, "sawtooth", 0.18]]); },
+    spell() { seq([[523, 0, 0.17, "sine", 0.14], [659, 55, 0.17, "sine", 0.14], [784, 110, 0.17, "sine", 0.14], [1047, 165, 0.22, "sine", 0.15]]); },
+    heal()  { seq([[523, 0, 0.21, "sine", 0.11], [659, 70, 0.21, "sine", 0.12], [784, 140, 0.27, "sine", 0.13]]); },
+    aoe()   { burst(0.22, 0.5, 0.14); seq([[240, 30, 0.22, "sawtooth", 0.2], [180, 140, 0.22, "sawtooth", 0.17]]); },
+
+    // ── Исход боя ──
+    victory() { seq([[523, 0, 0.13, "sine", 0.2], [659, 120, 0.13, "sine", 0.2], [784, 240, 0.13, "sine", 0.2], [1047, 360, 0.42, "sine", 0.25]]); },
+    defeat()  { seq([[280, 0, 0.22, "sine", 0.2], [230, 200, 0.22, "sine", 0.18], [180, 420, 0.4, "sine", 0.16]]); },
+  };
+})();
 
 // эмодзи-заглушка арта по типу карточки (если нет картинки)
 const TYPE_ICON = {
@@ -49,6 +113,7 @@ function showMode(mode) {
   $$(".view").forEach(v => v.classList.toggle("hidden", v.dataset.view !== mode));
   if (mode === "admin" && !state.categories) initAdmin();
   if (mode === "sim" && !state.roster) initSim();
+  if (mode === "party") initParty();
 }
 
 document.addEventListener("click", (e) => {
@@ -254,6 +319,7 @@ function showDetail(card) {
   }
   const canEdit = state.forms && state.forms.some(f => f.card_type === card.card_type);
   $("#detail-body").innerHTML = `
+    <button class="modal-close detail-close-btn" id="detail-close">✕</button>
     <div class="detail-art" style="${artStyle(card)}">${icon}
       ${card.is_unique ? '<span class="badge-unique">уник.</span>' : ""}</div>
     <div class="detail-content">
@@ -262,10 +328,24 @@ function showDetail(card) {
       ${card.description ? `<p class="desc">${esc(card.description)}</p>` : ""}
       <div class="kv">${rows.join("")}</div>
     </div>
-    ${canEdit ? `<div class="detail-foot"><button class="btn-edit" id="detail-edit-btn">✏️ Редактировать</button></div>` : ""}`;
+    <div class="detail-foot">
+      ${canEdit ? `<button class="btn-edit" id="detail-edit-btn">✏️ Редактировать</button>` : ""}
+      <button class="btn-danger" id="detail-delete">🗑 Удалить</button>
+    </div>`;
+  $("#detail-close").onclick = () => closeModal("#detail-modal");
   if (canEdit) {
     $("#detail-edit-btn").onclick = () => { closeModal("#detail-modal"); openEditForm(card); };
   }
+  $("#detail-delete").onclick = async () => {
+    if (!confirm(`Удалить «${esc(card.name)}»? Это действие необратимо.`)) return;
+    const { ok, status } = await API.delete(`/api/cards/${card.id}`);
+    if (status === 204 || ok) {
+      closeModal("#detail-modal");
+      loadCards();
+    } else {
+      alert("Не удалось удалить: возможно, на неё ссылаются другие (например, она экипирована).");
+    }
+  };
   openModal("#detail-modal");
 }
 
@@ -571,6 +651,8 @@ function renderLogUpTo(idx) {
 
 function showOutcome() {
   const o = state.sim.outcome;
+  if (o.winner === "party") SFX.victory();
+  else if (o.winner === "enemy") SFX.defeat();
   const box = $("#outcome");
   let cls = "draw", txt;
   if (o.winner === "party") { cls = "win-allies"; txt = "🛡️ Победа союзников!"; }
@@ -1178,13 +1260,20 @@ async function animateBattleEvents(events) {
     appendEventToLog(log, ev);
     log.scrollTop = log.scrollHeight;
     updateRoundLabel(ev);
+
+    const logText = (ev.log || []).join(" ");
+    let soundPlayed = false;
+
     if (ev.combatants) {
       const prevHp = {};
       ib.combatants.forEach(c => { prevHp[c.uid] = c.hp; });
-      // Найти цель (тот кто потерял HP) и запустить анимацию атаки
-      let targetUid = null;
+      let targetUid = null, anyDied = false, anyHealed = false;
       ev.combatants.forEach(c => {
-        if (prevHp[c.uid] !== undefined && c.hp < prevHp[c.uid]) targetUid = c.uid;
+        if (prevHp[c.uid] !== undefined) {
+          const d = c.hp - prevHp[c.uid];
+          if (d < 0) { if (!targetUid) targetUid = c.uid; if (c.hp <= 0) anyDied = true; }
+          if (d > 0) anyHealed = true;
+        }
       });
       if (ev.actor_uid && targetUid) animateAttack(ev.actor_uid, targetUid);
       ev.combatants.forEach(c => {
@@ -1193,7 +1282,21 @@ async function animateBattleEvents(events) {
           spawnDmgFloat(c.uid, c.hp - prevHp[c.uid]);
         }
       });
+      // Звук по приоритету: смерть > AoE > лечение > заклинание/удар
+      if (anyDied)                          { SFX.kill();  soundPlayed = true; }
+      else if (logText.includes("[взрыв]")) { SFX.aoe();   soundPlayed = true; }
+      else if (anyHealed)                   { SFX.heal();  soundPlayed = true; }
+      else if (targetUid) {
+        logText.includes("кастует") ? SFX.spell() : SFX.hit();
+        soundPlayed = true;
+      }
     }
+    // Промах или провал заклинания — HP не меняется, определяем по тексту
+    if (!soundPlayed) {
+      if (logText.includes("промахивается") || logText.includes("проваливает")) SFX.miss();
+      else if (logText.includes("кастует")) SFX.spell();
+    }
+
     appendVerboseLog([ev]);
     await pause(220);
   }
@@ -1301,6 +1404,8 @@ function spawnDmgFloat(uid, delta) {
 }
 
 function showBattleOutcome(outcome) {
+  if (outcome.winner === "party") SFX.victory();
+  else if (outcome.winner === "enemy") SFX.defeat();
   const box = $("#ba-outcome");
   let cls = "draw", txt;
   if (outcome.winner === "party") { cls = "win-allies"; txt = "🛡️ Победа союзников!"; }
@@ -1344,6 +1449,201 @@ $("#ba-pass").onclick = () => {
 
 $("#ap-cancel").onclick = closeApPopup;
 $("#action-popup-bg").onclick = closeApPopup;
+
+// ───────────────────────── Состояние группы ─────────────────────────
+
+const partyState = { chars: [] };
+let _dragCtx = null; // { charId, cardId, cardType, fromSlot: null|"weapon"|"armor" }
+
+async function initParty() {
+  partyState.chars = await API.get("/api/party");
+  renderParty();
+}
+
+function renderParty() {
+  const grid = $("#party-grid");
+  grid.innerHTML = "";
+  if (!partyState.chars.length) {
+    grid.innerHTML = '<p style="color:var(--muted);text-align:center;padding:40px">Нет игровых персонажей.</p>';
+    return;
+  }
+  partyState.chars.forEach(ch => grid.appendChild(buildCharCard(ch)));
+}
+
+function buildCharCard(ch) {
+  const el = document.createElement("div");
+  el.className = "party-char";
+  const hpPct = ch.max_hp ? Math.max(0, Math.min(100, (ch.current_hp / ch.max_hp) * 100)) : 0;
+  const fillCls = hpPct > 50 ? "" : hpPct > 25 ? " low" : " crit";
+
+  el.innerHTML = `
+    <div class="pch-head">
+      <div class="pch-name">${esc(ch.name)}</div>
+      ${ch.description ? `<div class="pch-desc">${esc(ch.description)}</div>` : ""}
+      <div class="pch-hp-row">
+        <div class="pch-hp-bar"><div class="pch-hp-fill${fillCls}" style="width:${hpPct}%"></div></div>
+        <span class="pch-hp-label">${ch.current_hp} / ${ch.max_hp} HP</span>
+      </div>
+      <div class="pch-money">💰 ${ch.money} зол.</div>
+    </div>
+
+    <div class="pch-body">
+      <div class="pch-equip-zone">
+        <div class="pch-slot-header">⚔️ Оружие</div>
+        <div class="pch-drop-slot" data-char-id="${ch.id}" data-drop-zone="weapon">
+          ${ch.equipped_weapon ? `
+            <div class="pch-equipped-item" draggable="true"
+                 data-char-id="${ch.id}" data-card-id="${ch.equipped_weapon.id}"
+                 data-card-type="weapon" data-from-slot="weapon">
+              <div class="pch-eqi-name">${esc(ch.equipped_weapon.name)}</div>
+              <div class="pch-eqi-sub">⚔️ ${ch.equipped_weapon.damage_dice}</div>
+              ${ch.equipped_weapon.description ? `<div class="pch-eqi-desc">${esc(ch.equipped_weapon.description)}</div>` : ""}
+            </div>` : `
+            <div class="pch-slot-empty">Нет оружия<span class="pch-slot-hint">перетащи из инвентаря</span></div>`}
+        </div>
+      </div>
+      <div class="pch-equip-zone">
+        <div class="pch-slot-header">🛡️ Доспех</div>
+        <div class="pch-drop-slot" data-char-id="${ch.id}" data-drop-zone="armor">
+          ${ch.equipped_armor ? `
+            <div class="pch-equipped-item" draggable="true"
+                 data-char-id="${ch.id}" data-card-id="${ch.equipped_armor.id}"
+                 data-card-type="armor" data-from-slot="armor">
+              <div class="pch-eqi-name">${esc(ch.equipped_armor.name)}</div>
+              <div class="pch-eqi-sub">🛡️ +${ch.equipped_armor.phys_def_bonus} к ФЗ</div>
+              ${ch.equipped_armor.description ? `<div class="pch-eqi-desc">${esc(ch.equipped_armor.description)}</div>` : ""}
+            </div>` : `
+            <div class="pch-slot-empty">Нет доспеха<span class="pch-slot-hint">перетащи из инвентаря</span></div>`}
+        </div>
+      </div>
+      <div class="pch-stats-col">
+        <div class="pch-slot-header">Характеристики</div>
+        <div class="pch-stats">
+          <div class="pch-stat-row"><span class="pch-sico">💪</span><b>${ch.strength}</b><span class="pch-sname">Сила</span></div>
+          <div class="pch-stat-row"><span class="pch-sico">🏃</span><b>${ch.dexterity}</b><span class="pch-sname">Ловкость</span></div>
+          <div class="pch-stat-row"><span class="pch-sico">🧠</span><b>${ch.wisdom}</b><span class="pch-sname">Мудрость</span></div>
+          <div class="pch-stat-row"><span class="pch-sico">💬</span><b>${ch.charisma}</b><span class="pch-sname">Харизма</span></div>
+          <div class="pch-stat-row"><span class="pch-sico">🛡</span><b>${ch.phys_defense}</b><span class="pch-sname">Физзащита</span></div>
+          <div class="pch-stat-row"><span class="pch-sico">✨</span><b>${ch.mag_defense}</b><span class="pch-sname">Магзащита</span></div>
+        </div>
+        ${ch.skills.length ? `
+          <div class="pch-skills-title">Навыки</div>
+          ${ch.skills.map(s => `
+            <div class="pch-skill">
+              <span>${esc(s.name)}</span>
+              <span class="pch-skill-tag">${s.is_passive ? "пас." : "акт."}</span>
+            </div>`).join("")}
+        ` : ""}
+      </div>
+    </div>
+
+    <div class="pch-inv-zone" data-char-id="${ch.id}" data-drop-zone="inventory">
+      <div class="pch-inv-header">Инвентарь</div>
+      <div class="pch-inv-items">
+        ${ch.inventory.length
+          ? ch.inventory.map(it => buildInvItem(it, ch.id)).join("")
+          : '<span class="pch-inv-empty">пусто</span>'}
+      </div>
+    </div>
+  `;
+
+  // Drag from equipped slot → inventory = unequip
+  el.querySelectorAll("[data-from-slot]").forEach(item => {
+    item.addEventListener("dragstart", e => {
+      SFX.pickup();
+      _dragCtx = {
+        charId: +item.dataset.charId,
+        cardId: +item.dataset.cardId,
+        cardType: item.dataset.cardType,
+        fromSlot: item.dataset.fromSlot,
+      };
+      item.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+    });
+    item.addEventListener("dragend", () => item.classList.remove("dragging"));
+  });
+
+  // Drag from inventory → equip slot
+  el.querySelectorAll("[data-inv-item]").forEach(item => {
+    item.addEventListener("dragstart", e => {
+      SFX.pickup();
+      _dragCtx = {
+        charId: +item.dataset.charId,
+        cardId: +item.dataset.cardId,
+        cardType: item.dataset.cardType,
+        fromSlot: null,
+      };
+      item.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+    });
+    item.addEventListener("dragend", () => item.classList.remove("dragging"));
+  });
+
+  // Drop zones
+  el.querySelectorAll("[data-drop-zone]").forEach(zone => {
+    zone.addEventListener("dragover", e => {
+      if (!_dragCtx) return;
+      if (+zone.dataset.charId !== _dragCtx.charId) return;
+      const dz = zone.dataset.dropZone;
+      // Equip slots only accept inventory items of matching type
+      if (dz === "weapon" && (_dragCtx.cardType !== "weapon" || _dragCtx.fromSlot !== null)) return;
+      if (dz === "armor"  && (_dragCtx.cardType !== "armor"  || _dragCtx.fromSlot !== null)) return;
+      // Inventory zone only accepts items dragged from an equip slot
+      if (dz === "inventory" && _dragCtx.fromSlot === null) return;
+      e.preventDefault();
+      zone.classList.add("drag-over");
+    });
+    zone.addEventListener("dragleave", e => {
+      if (!zone.contains(e.relatedTarget)) zone.classList.remove("drag-over");
+    });
+    zone.addEventListener("drop", async e => {
+      e.preventDefault();
+      zone.classList.remove("drag-over");
+      if (!_dragCtx) return;
+      if (+zone.dataset.charId !== _dragCtx.charId) return;
+      const ctx = { ..._dragCtx };
+      _dragCtx = null;
+      if (zone.dataset.dropZone === "inventory") {
+        await doEquip(ctx.charId, ctx.fromSlot, null);
+      } else {
+        if (ctx.fromSlot !== null) return;
+        await doEquip(ctx.charId, zone.dataset.dropZone, ctx.cardId);
+      }
+    });
+  });
+
+  return el;
+}
+
+function buildInvItem(it, charId) {
+  const isEquippable = it.card_type === "weapon" || it.card_type === "armor";
+  const tags = [];
+  if (it.passive_in_inventory) tags.push(`<span class="pch-tag passive">активно в инвентаре</span>`);
+  if (it.grants_skill) tags.push(`<span class="pch-tag passive">навык: ${esc(it.grants_skill)}</span>`);
+  if (it.heal_dice) tags.push(`<span class="pch-tag heal">лечение ${it.heal_dice}</span>`);
+  if (it.spell_name) tags.push(`<span class="pch-tag spell">⚡ ${esc(it.spell_name)}${it.damage_dice ? " " + it.damage_dice : ""}</span>`);
+  if (it.is_consumable) tags.push(`<span class="pch-tag">одноразовый</span>`);
+  return `<div class="pch-inv-item${isEquippable ? " equippable" : ""}"
+    ${isEquippable ? `draggable="true" data-inv-item data-char-id="${charId}" data-card-id="${it.id}" data-card-type="${it.card_type}"` : ""}>
+    <span class="pch-inv-ico">${it.type_icon || "📦"}</span>
+    <div class="pch-inv-info">
+      <div class="pch-inv-name">${esc(it.name)}</div>
+      ${tags.length ? `<div class="pch-inv-tags">${tags.join("")}</div>` : ""}
+    </div>
+  </div>`;
+}
+
+async function doEquip(charId, slot, cardId) {
+  const { ok, data } = await API.post(`/api/characters/${charId}/equip`, { slot, card_id: cardId });
+  if (!ok) { SFX.deny(); toast(data?.errors?.slot || data?.errors?.__form__ || "Ошибка при экипировке", true); return; }
+  cardId ? SFX.equip() : SFX.unequip();
+  const idx = partyState.chars.findIndex(c => c.id === charId);
+  if (idx !== -1) partyState.chars[idx] = data;
+  renderParty();
+  toast(cardId ? "Экипировано" : "Снято");
+}
+
+$("#party-refresh").onclick = initParty;
 
 // ───────────────────────── привязка событий ─────────────────────────
 
