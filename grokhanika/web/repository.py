@@ -53,6 +53,7 @@ _MODELS: dict[str, type[Card]] = {
     CardType.SCROLL.value: Scroll,
     CardType.INSTRUMENT.value: Instrument,
     CardType.SKILL.value: Skill,
+    CardType.LORE.value: LoreEntry,
 }
 
 # поля-ссылки на другую карточку: имя поля → ожидаемая модель цели
@@ -126,6 +127,9 @@ def list_category(
         cards = [c for c in cards if not (isinstance(c, Character) and c.is_player)]
     elif skill_passive_filter is not None:
         cards = [c for c in cards if isinstance(c, Skill) and c.is_passive == skill_passive_filter]
+    elif category_key == "lore" and filter_value and filter_value != "all":
+        from ..db.models import LoreEntry
+        cards = [c for c in cards if isinstance(c, LoreEntry) and c.category == filter_value]
 
     reverse = order == "desc"
     cards.sort(key=lambda c: _sort_key(c, sort), reverse=reverse)
