@@ -12,7 +12,6 @@
     <nav class="modes">
       <button class="mode-btn active" data-mode="home">🏠 Главная</button>
       <button class="mode-btn" data-mode="admin">🛠️ Отладка / Админка</button>
-      <button class="mode-btn" data-mode="sim">⚔️ Имитация боя</button>
       <button class="mode-btn" data-mode="adv">📖 Приключение</button>
       <button class="mode-btn" data-mode="party">👥 Группа</button>
     </nav>
@@ -26,12 +25,12 @@
         <p>Отладочный инструмент поверх игрового движка. Просматривайте сущности
            мира, добавляйте новые и прогоняйте бои так, будто они идут в игре.</p>
         <div class="big-buttons">
-          <button class="big-btn" data-goto="admin">
+          <button class="big-btn" data-goto="admin" data-goto-tab="world">
             <span class="big-ico">🛠️</span>
-            <span class="big-title">Отладка / Админка</span>
+            <span class="big-title">Мастерская</span>
             <span class="big-desc">Карточки БД по категориям, фильтры, сортировки, добавление сущностей</span>
           </button>
-          <button class="big-btn" data-goto="sim">
+          <button class="big-btn" data-goto="admin" data-goto-tab="sim">
             <span class="big-ico">⚔️</span>
             <span class="big-title">Имитация боя</span>
             <span class="big-desc">Соберите врагов и союзников (за NPC играет ИИ) и симулируйте сражение</span>
@@ -50,116 +49,206 @@
       </div>
     </section>
 
-    <!-- ───────── Админка ───────── -->
+    <!-- ───────── Отладка / Админка (с под-вкладками) ───────── -->
     <section class="view hidden" data-view="admin">
-      <div class="admin-head">
-        <div class="cat-tabs" id="cat-tabs"></div>
-        <button class="add-btn" id="add-btn">➕ Добавить сущность</button>
-      </div>
-      <div class="toolbar" id="toolbar"></div>
-      <div class="card-grid" id="card-grid"></div>
-      <div class="empty hidden" id="empty-state">Ничего не найдено.</div>
-    </section>
 
-    <!-- ───────── Симуляция ───────── -->
-    <section class="view hidden" data-view="sim">
-      <div class="sim-setup">
-        <div class="roster-col" data-team="enemies">
-          <h3>👹 Враги</h3>
-          <div class="team-list" id="team-enemies"></div>
-        </div>
-        <div class="sim-center">
-          <div class="pool">
-            <h4>Доступные участники</h4>
-            <p class="hint">Кликните, чтобы добавить во врагов или союзников.</p>
-            <div class="pool-list" id="pool-list"></div>
-          </div>
-          <div class="sim-controls">
-            <label>Сид (для воспроизводимости):
-              <input type="number" id="sim-seed" placeholder="напр. 7">
-            </label>
-            <label class="sim-manual-label">
-              <input type="checkbox" id="sim-manual">
-              <span>Ручное управление союзниками</span>
-            </label>
-            <button class="sim-go" id="sim-go">▶ Симулировать бой</button>
-          </div>
-        </div>
-        <div class="roster-col" data-team="allies">
-          <h3>🛡️ Союзники <small id="allies-hint">(ИИ играет за всех)</small></h3>
-          <div class="team-list" id="team-allies"></div>
-        </div>
+      <!-- Под-вкладки -->
+      <div class="admin-subtabs">
+        <button class="admin-sub-tab active" data-tab="world">🗂 Наполнение мира</button>
+        <button class="admin-sub-tab" data-tab="sim">⚔️ Имитация боя</button>
+        <button class="admin-sub-tab" data-tab="llm">🤖 LLM / RAG</button>
       </div>
 
-      <!-- Автобой (просмотр) -->
-      <div class="sim-stage hidden" id="sim-stage">
-        <div class="stage-bar">
-          <div class="stage-side" id="stage-enemies"></div>
-          <div class="stage-vs">VS</div>
-          <div class="stage-side" id="stage-allies"></div>
+      <!-- ── Под-вкладка: Наполнение мира ── -->
+      <div class="admin-sub-section" data-section="world">
+        <div class="admin-head">
+          <div class="cat-tabs" id="cat-tabs"></div>
+          <button class="add-btn" id="add-btn">➕ Добавить сущность</button>
         </div>
-        <div class="stage-meta">
-          <span id="stage-round">Раунд —</span>
-          <div class="playback">
-            <button id="pb-prev">⏮</button>
-            <button id="pb-play">⏯ Авто</button>
-            <button id="pb-next">⏭</button>
-          </div>
-        </div>
-        <div class="battle-log" id="battle-log"></div>
-        <div class="outcome hidden" id="outcome"></div>
+        <div class="toolbar" id="toolbar"></div>
+        <div class="card-grid" id="card-grid"></div>
+        <div class="empty hidden" id="empty-state">Ничего не найдено.</div>
       </div>
 
-      <!-- Интерактивный бой -->
-      <div class="battle-arena hidden" id="battle-arena">
-        <div class="ba-header">
-          <div class="ba-meta">
-            <span class="ba-round-label" id="ba-round-label">Начало боя</span>
-            <span class="ba-turn-label" id="ba-turn-label"></span>
+      <!-- ── Под-вкладка: Имитация боя ── -->
+      <div class="admin-sub-section hidden" data-section="sim">
+        <div class="sim-setup">
+          <div class="roster-col" data-team="enemies">
+            <h3>👹 Враги</h3>
+            <div class="team-list" id="team-enemies"></div>
           </div>
-          <div class="ba-hint" id="ba-hint">Зажмите карточку и перетащите на врага, или удерживайте для меню</div>
-        </div>
-
-        <div class="ba-field">
-          <!-- Враги сверху -->
-          <div class="ba-row ba-enemies" id="ba-enemies"></div>
-
-          <!-- Разделитель -->
-          <div class="ba-divider">
-            <div class="ba-divider-line"></div>
-            <span class="ba-divider-icon">⚔️</span>
-            <div class="ba-divider-line"></div>
-          </div>
-
-          <!-- Союзники снизу -->
-          <div class="ba-row ba-allies" id="ba-allies"></div>
-        </div>
-
-        <div class="ba-bottom">
-          <div class="ba-log-wrap">
-            <div class="ba-log-header">
-              <span>Лог событий</span>
-              <label class="ba-verbose-toggle" title="Показать подробный лог для LLM">
-                <input type="checkbox" id="ba-verbose"> подробный
+          <div class="sim-center">
+            <div class="pool">
+              <h4>Доступные участники</h4>
+              <p class="hint">Кликните, чтобы добавить во врагов или союзников.</p>
+              <div class="pool-list" id="pool-list"></div>
+            </div>
+            <div class="sim-controls">
+              <label>Сид (для воспроизводимости):
+                <input type="number" id="sim-seed" placeholder="напр. 7">
               </label>
-            </div>
-            <div class="battle-log" id="ba-log"></div>
-            <div class="ba-verbose-wrap hidden" id="ba-verbose-wrap">
-              <div class="ba-verbose-label">Подробный лог (для LLM)</div>
-              <pre class="ba-verbose-log" id="ba-verbose-log"></pre>
+              <label class="sim-manual-label">
+                <input type="checkbox" id="sim-manual">
+                <span>Ручное управление союзниками</span>
+              </label>
+              <button class="sim-go" id="sim-go">▶ Симулировать бой</button>
             </div>
           </div>
-          <div class="ba-side-actions">
-            <button class="ba-flee-btn" id="ba-flee" title="Вся группа пытается сбежать (d20+DEX ≥ 10)">
-              🏃 Бежать
-            </button>
-            <button class="ba-pass-btn" id="ba-pass" title="Пропустить ход текущего персонажа">
-              ⏭ Пас
-            </button>
+          <div class="roster-col" data-team="allies">
+            <h3>🛡️ Союзники <small id="allies-hint">(ИИ играет за всех)</small></h3>
+            <div class="team-list" id="team-allies"></div>
           </div>
         </div>
 
-        <div class="outcome hidden" id="ba-outcome"></div>
+        <!-- Автобой (просмотр) -->
+        <div class="sim-stage hidden" id="sim-stage">
+          <div class="stage-bar">
+            <div class="stage-side" id="stage-enemies"></div>
+            <div class="stage-vs">VS</div>
+            <div class="stage-side" id="stage-allies"></div>
+          </div>
+          <div class="stage-meta">
+            <span id="stage-round">Раунд —</span>
+            <div class="playback">
+              <button id="pb-prev">⏮</button>
+              <button id="pb-play">⏯ Авто</button>
+              <button id="pb-next">⏭</button>
+            </div>
+          </div>
+          <div class="battle-log" id="battle-log"></div>
+          <div class="outcome hidden" id="outcome"></div>
+        </div>
+
+        <!-- Интерактивный бой -->
+        <div class="battle-arena hidden" id="battle-arena">
+          <div class="ba-header">
+            <div class="ba-meta">
+              <span class="ba-round-label" id="ba-round-label">Начало боя</span>
+              <span class="ba-turn-label" id="ba-turn-label"></span>
+            </div>
+            <div class="ba-hint" id="ba-hint">Зажмите карточку и перетащите на врага, или удерживайте для меню</div>
+          </div>
+
+          <div class="ba-field">
+            <!-- Враги сверху -->
+            <div class="ba-row ba-enemies" id="ba-enemies"></div>
+
+            <!-- Разделитель -->
+            <div class="ba-divider">
+              <div class="ba-divider-line"></div>
+              <span class="ba-divider-icon">⚔️</span>
+              <div class="ba-divider-line"></div>
+            </div>
+
+            <!-- Союзники снизу -->
+            <div class="ba-row ba-allies" id="ba-allies"></div>
+          </div>
+
+          <div class="ba-bottom">
+            <div class="ba-log-wrap">
+              <div class="ba-log-header">
+                <span>Лог событий</span>
+                <label class="ba-verbose-toggle" title="Показать подробный лог для LLM">
+                  <input type="checkbox" id="ba-verbose"> подробный
+                </label>
+              </div>
+              <div class="battle-log" id="ba-log"></div>
+              <div class="ba-verbose-wrap hidden" id="ba-verbose-wrap">
+                <div class="ba-verbose-label">Подробный лог (для LLM)</div>
+                <pre class="ba-verbose-log" id="ba-verbose-log"></pre>
+              </div>
+            </div>
+            <div class="ba-side-actions">
+              <button class="ba-flee-btn" id="ba-flee" title="Вся группа пытается сбежать (d20+DEX ≥ 10)">
+                🏃 Бежать
+              </button>
+              <button class="ba-pass-btn" id="ba-pass" title="Пропустить ход текущего персонажа">
+                ⏭ Пас
+              </button>
+            </div>
+          </div>
+
+          <div class="outcome hidden" id="ba-outcome"></div>
+        </div>
+      </div>
+
+      <!-- ── Под-вкладка: LLM / RAG ── -->
+      <div class="admin-sub-section hidden" data-section="llm">
+        <div class="llm-settings-page">
+          <div class="llm-settings-head">
+            <h3>🤖 Настройки LLM и RAG</h3>
+            <p class="hint">Поддерживается любой провайдер с OpenAI-совместимым API: OpenAI, Anthropic, Groq, Mistral, Ollama, vLLM, llama.cpp и др. Достаточно указать base_url, модель и API-ключ.</p>
+          </div>
+
+          <!-- Быстрый выбор провайдера -->
+          <div class="llm-provider-row">
+            <span class="field-label">Быстрый выбор провайдера:</span>
+            <div class="llm-provider-chips" id="llm-provider-chips">
+              <button class="llm-chip" data-url="https://api.openai.com/v1" data-model="gpt-4o" data-key-hint="sk-…">OpenAI</button>
+              <button class="llm-chip" data-url="https://api.anthropic.com/v1" data-model="claude-opus-4-8" data-key-hint="anthropic key">Anthropic</button>
+              <button class="llm-chip" data-url="https://api.groq.com/openai/v1" data-model="llama-3.3-70b-versatile" data-key-hint="gsk_…">Groq</button>
+              <button class="llm-chip" data-url="https://api.mistral.ai/v1" data-model="mistral-large-latest" data-key-hint="API key">Mistral</button>
+              <button class="llm-chip" data-url="http://localhost:11434/v1" data-model="qwen2.5:7b-instruct" data-key-hint="">Ollama (локальный)</button>
+              <button class="llm-chip" data-url="http://localhost:8000/v1" data-model="" data-key-hint="">vLLM (локальный)</button>
+            </div>
+          </div>
+
+          <div class="llm-settings-grid">
+            <div class="llm-settings-col">
+              <fieldset class="ai-group">
+                <legend>🎙 Повествователь (ГМ)</legend>
+                <label class="field"><span class="field-label">Эндпоинт (base_url)</span>
+                  <input id="llm-narrator-base_url" placeholder="http://localhost:11434/v1"></label>
+                <label class="field"><span class="field-label">Модель</span>
+                  <input id="llm-narrator-model" placeholder="qwen2.5:7b-instruct"></label>
+                <label class="field"><span class="field-label">API-ключ (опц.)</span>
+                  <input id="llm-narrator-api_key" type="password" placeholder="(пусто для локального)"></label>
+                <label class="field"><span class="field-label">Температура</span>
+                  <input id="llm-narrator-temperature" type="number" step="0.05" min="0" max="2"></label>
+                <div class="ai-status" id="llm-narrator-status"></div>
+              </fieldset>
+
+              <fieldset class="ai-group">
+                <legend>🧠 Системная модель (интент/компактинг)</legend>
+                <label class="field"><span class="field-label">Эндпоинт (base_url)</span>
+                  <input id="llm-system-base_url" placeholder="http://localhost:11434/v1"></label>
+                <label class="field"><span class="field-label">Модель</span>
+                  <input id="llm-system-model" placeholder="qwen2.5:7b-instruct"></label>
+                <label class="field"><span class="field-label">API-ключ (опц.)</span>
+                  <input id="llm-system-api_key" type="password" placeholder="(пусто для локального)"></label>
+                <label class="field"><span class="field-label">Температура</span>
+                  <input id="llm-system-temperature" type="number" step="0.05" min="0" max="2"></label>
+                <div class="ai-status" id="llm-system-status"></div>
+              </fieldset>
+            </div>
+
+            <div class="llm-settings-col">
+              <fieldset class="ai-group">
+                <legend>🔎 Эмбеддер (RAG)</legend>
+                <label class="field"><span class="field-label">Модель sentence-transformers</span>
+                  <input id="llm-embedder-model" placeholder="intfloat/multilingual-e5-base"></label>
+                <p class="hint">После смены модели запустите <code>scripts/reindex_embeddings.py</code> для переиндексации базы знаний.</p>
+              </fieldset>
+
+              <fieldset class="ai-group">
+                <legend>📚 Контекст памяти</legend>
+                <label class="field"><span class="field-label">Окно (сообщений)</span>
+                  <input id="llm-memory-window_messages" type="number" min="2"></label>
+                <label class="field"><span class="field-label">Порог компактинга</span>
+                  <input id="llm-memory-compact_threshold" type="number" min="2"></label>
+                <label class="field"><span class="field-label">Эпизодических воспоминаний (top-k)</span>
+                  <input id="llm-memory-episodic_top_k" type="number" min="0"></label>
+                <label class="field"><span class="field-label">RAG-результатов (top-k)</span>
+                  <input id="llm-memory-retrieval_top_k" type="number" min="1"></label>
+              </fieldset>
+            </div>
+          </div>
+
+          <div class="llm-settings-actions">
+            <button class="btn-secondary" id="llm-test">🔌 Проверить подключение</button>
+            <button class="btn-primary" id="llm-save">💾 Сохранить настройки</button>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -240,6 +329,12 @@
     <section class="view hidden" data-view="party">
       <div class="party-head">
         <h2>👥 Состояние группы</h2>
+        <div class="party-session-sel-wrap">
+          <label class="field-label" for="party-session-sel">Сессия:</label>
+          <select id="party-session-sel">
+            <option value="">Все персонажи</option>
+          </select>
+        </div>
         <button class="btn-secondary" id="party-refresh">↻ Обновить</button>
       </div>
       <div class="party-grid" id="party-grid"></div>
@@ -274,7 +369,7 @@
     <div class="modal modal-detail" id="detail-body"></div>
   </div>
 
-  <!-- ───────── Модалка настроек ИИ ───────── -->
+  <!-- ───────── Модалка настроек ИИ (из приключения) ───────── -->
   <div class="modal-backdrop hidden" id="ai-modal">
     <div class="modal">
       <div class="modal-head">
@@ -282,8 +377,7 @@
         <button class="modal-close" id="ai-close">✕</button>
       </div>
       <div class="modal-body" id="ai-body">
-        <p class="hint">Локальные OSS-модели через OpenAI-совместимый эндпоинт (Ollama, vLLM, llama.cpp…).
-           Повествователь и системная модель настраиваются раздельно.</p>
+        <p class="hint">Те же настройки доступны в разделе <b>Отладка / Админка → LLM / RAG</b> с расширенными опциями.</p>
 
         <fieldset class="ai-group">
           <legend>🎙 Повествователь (ГМ)</legend>
@@ -292,7 +386,7 @@
           <label class="field"><span class="field-label">Модель</span>
             <input id="ai-narrator-model" placeholder="qwen2.5:7b-instruct"></label>
           <label class="field"><span class="field-label">API-ключ (опц.)</span>
-            <input id="ai-narrator-api_key" placeholder="(пусто для локального)"></label>
+            <input id="ai-narrator-api_key" type="password" placeholder="(пусто для локального)"></label>
           <label class="field"><span class="field-label">Температура</span>
             <input id="ai-narrator-temperature" type="number" step="0.05" min="0" max="2"></label>
           <div class="ai-status" id="ai-narrator-status"></div>
@@ -305,7 +399,7 @@
           <label class="field"><span class="field-label">Модель</span>
             <input id="ai-system-model" placeholder="qwen2.5:7b-instruct"></label>
           <label class="field"><span class="field-label">API-ключ (опц.)</span>
-            <input id="ai-system-api_key" placeholder="(пусто для локального)"></label>
+            <input id="ai-system-api_key" type="password" placeholder="(пусто для локального)"></label>
           <label class="field"><span class="field-label">Температура</span>
             <input id="ai-system-temperature" type="number" step="0.05" min="0" max="2"></label>
           <div class="ai-status" id="ai-system-status"></div>
@@ -387,7 +481,7 @@
     <button class="ap-cancel" id="ap-cancel">✕ Отмена</button>
   </div>
 
-  <!-- ───────── Радиальное меню ───────── -->
+  <!-- ───────── Радиальное меню (бой + инвентарь) ───────── -->
   <div class="radial-menu hidden" id="radial-menu"></div>
 
   <div class="toast hidden" id="toast"></div>
