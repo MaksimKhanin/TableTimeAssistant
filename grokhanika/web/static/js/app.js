@@ -113,7 +113,6 @@ function showMode(mode) {
   $$(".view").forEach(v => v.classList.toggle("hidden", v.dataset.view !== mode));
   if (mode === "admin" && !state.categories) initAdmin();
   if (mode === "adv" && !advState.ready) initAdventure();
-  if (mode === "party") initParty();
 }
 
 // Переключение под-вкладок в Отладке/Админке
@@ -399,7 +398,219 @@ function openEditForm(card) {
   $("#modal-title").textContent = `Редактировать: ${esc(card.name)}`;
   $("#form-error").classList.add("hidden");
   $("#form-submit").textContent = "Сохранить";
+
+  // Для персонажей добавляем управление инвентарём и навыками
+  if (card.card_type === "character") {
+    renderCharManagementPanels(card);
+  }
+
   openModal("#modal");
+}
+
+async function renderCharManagementPanels(card) {
+  const modalBody = $(".modal-body");
+  // Убираем старые панели если они были
+  let existingPanels = $("#char-mgmt-panels");
+  if (existingPanels) existingPanels.remove();
+
+  const panels = document.createElement("div");
+  panels.id = "char-mgmt-panels";
+
+  // ── Экипировка ──
+  const eqSection = document.createElement("div");
+  eqSection.className = "char-mgmt-section";
+  eqSection.innerHTML = `<div class="char-mgmt-title">⚔️ Экипировка</div>
+    <div class="char-equip-row">
+      <div class="char-equip-slot">
+        <span class="char-equip-label">Оружие:</span>
+        <span id="edit-weapon-name">${card.fields?.weapon ? esc(card.fields.weapon) : "—"}</span>
+        <select id="edit-weapon-sel" style="flex:1;margin-left:8px"></select>
+        <button class="btn-secondary char-equip-btn" id="edit-equip-weapon-btn">✓ Экипировать</button>
+        <button class="btn-secondary char-equip-btn" id="edit-unequip-weapon-btn">✕ Снять</button>
+      </div>
+      <div class="char-equip-slot">
+        <span class="char-equip-label">Броня:</span>
+        <span id="edit-armor-name">${card.fields?.armor ? esc(card.fields.armor) : "—"}</span>
+        <select id="edit-armor-sel" style="flex:1;margin-left:8px"></select>
+        <button class="btn-secondary char-equip-btn" id="edit-equip-armor-btn">✓ Экипировать</button>
+        <button class="btn-secondary char-equip-btn" id="edit-unequip-armor-btn">✕ Снять</button>
+      </div>
+    </div>`;
+  panels.appendChild(eqSection);
+
+  // ── Инвентарь ──
+  const invSection = document.createElement("div");
+  invSection.className = "char-mgmt-section";
+  invSection.innerHTML = `<div class="char-mgmt-title">🎒 Инвентарь</div>
+    <div id="edit-inv-list" class="char-mgmt-list"></div>
+    <div class="char-mgmt-add-row">
+      <select id="edit-add-item-sel" style="flex:1"></select>
+      <button class="btn-secondary" id="edit-add-item-btn">➕ Добавить предмет</button>
+    </div>`;
+  panels.appendChild(invSection);
+
+  // ── Навыки ──
+  const skillSection = document.createElement("div");
+  skillSection.className = "char-mgmt-section";
+  skillSection.innerHTML = `<div class="char-mgmt-title">🎓 Навыки</div>
+    <div id="edit-skill-list" class="char-mgmt-list"></div>
+    <div class="char-mgmt-add-row">
+      <select id="edit-add-skill-sel" style="flex:1"></select>
+      <button class="btn-secondary" id="edit-add-skill-btn">➕ Добавить навык</button>
+    </div>`;
+  panels.appendChild(skillSection);
+
+  modalBody.appendChild(panels);
+
+  // Загружаем каталоги
+  const [charData, itemsCatalog, skillsCatalog, equipment] = await Promise.all([
+    API.get(`/api/cards/${card.id}`),
+    API.get("/api/items-catalog"),
+    API.get("/api/skills-catalog"),
+    API.get("/api/equipment"),
+  ]);
+
+  // Заполняем текущий инвентарь
+  const currentChar = charData;
+  const invList = $("#edit-inv-list");
+  function renderEditInv(charSnapshot) {
+    invList.innerHTML = "";
+    const inv = charSnapshot.fields?.inventory || currentChar.fields?.inventory || [];
+    if (!inv.length) { invList.innerHTML = '<span class="muted hint">Инвентарь пуст</span>'; return; }
+    // Получаем полные данные из свежего снимка (используем fields.inventory — имена)
+    // Нам нужны id: берём из serialize данных
+    inv.forEach(name => {
+      // Найдём в каталоге по имени
+      const found = itemsCatalog.find(it => it.name === name);
+      if (!found) {
+        const row = document.createElement("div"); row.className = "char-mgmt-row";
+        row.innerHTML = `<span>${esc(name)}</span>`;
+        invList.appendChild(row);
+        return;
+      }
+      const row = document.createElement("div"); row.className = "char-mgmt-row";
+      row.innerHTML = `<span>${esc(found.name)}</span><span class="muted" style="font-size:0.8em;margin-left:6px">${esc(found.card_type)}</span>
+        <button class="btn-danger char-mgmt-rm" title="Убрать">✕</button>`;
+      row.querySelector(".char-mgmt-rm").onclick = async () => {
+        const r = await API.delete(`/api/characters/${card.id}/inventory/${found.id}`);
+        if (r.ok) { const fresh = await API.get(`/api/cards/${card.id}`); renderEditInv(fresh); loadCards(); }
+        else toast("Ошибка", true);
+      };
+      invList.appendChild(row);
+    });
+  }
+  renderEditInv(currentChar);
+
+  // Заполняем текущие навыки
+  const skillList = $("#edit-skill-list");
+  function renderEditSkills(charSnapshot) {
+    skillList.innerHTML = "";
+    const skills = charSnapshot.fields?.skills || currentChar.fields?.skills || [];
+    if (!skills.length) { skillList.innerHTML = '<span class="muted hint">Нет навыков</span>'; return; }
+    skills.forEach(name => {
+      const found = skillsCatalog.find(s => s.name === name);
+      const row = document.createElement("div"); row.className = "char-mgmt-row";
+      row.innerHTML = `<span>${esc(name)}</span><button class="btn-danger char-mgmt-rm" title="Убрать">✕</button>`;
+      if (found) {
+        row.querySelector(".char-mgmt-rm").onclick = async () => {
+          const r = await API.delete(`/api/characters/${card.id}/skills/${found.id}`);
+          if (r.ok) { const fresh = await API.get(`/api/cards/${card.id}`); renderEditSkills(fresh); loadCards(); }
+          else toast("Ошибка", true);
+        };
+      } else {
+        row.querySelector(".char-mgmt-rm").disabled = true;
+      }
+      skillList.appendChild(row);
+    });
+  }
+  renderEditSkills(currentChar);
+
+  // Заполняем селект "добавить предмет"
+  const addItemSel = $("#edit-add-item-sel");
+  addItemSel.innerHTML = '<option value="">— выбрать предмет —</option>';
+  itemsCatalog.forEach(it => {
+    const opt = document.createElement("option");
+    opt.value = it.id; opt.textContent = `${it.name} (${it.card_type})`;
+    addItemSel.appendChild(opt);
+  });
+
+  $("#edit-add-item-btn").onclick = async () => {
+    const itemId = addItemSel.value;
+    if (!itemId) return;
+    const { ok, data } = await API.post(`/api/characters/${card.id}/inventory`, { item_id: +itemId });
+    if (ok) { renderEditInv(data); loadCards(); toast("Предмет добавлен"); }
+    else toast(data?.errors?.__form__ || data?.error || "Ошибка", true);
+  };
+
+  // Заполняем селект "добавить навык"
+  const addSkillSel = $("#edit-add-skill-sel");
+  addSkillSel.innerHTML = '<option value="">— выбрать навык —</option>';
+  skillsCatalog.forEach(s => {
+    const opt = document.createElement("option");
+    opt.value = s.id; opt.textContent = s.name;
+    addSkillSel.appendChild(opt);
+  });
+
+  $("#edit-add-skill-btn").onclick = async () => {
+    const skillId = addSkillSel.value;
+    if (!skillId) return;
+    const { ok, data } = await API.post(`/api/characters/${card.id}/skills`, { skill_id: +skillId });
+    if (ok) { renderEditSkills(data); loadCards(); toast("Навык добавлен"); }
+    else toast(data?.errors?.__form__ || data?.error || "Ошибка", true);
+  };
+
+  // Экипировка: заполняем селект оружия из инвентаря
+  const invWeapons = (currentChar.fields?.inventory || []).filter(name => {
+    const it = itemsCatalog.find(i => i.name === name && i.card_type === "weapon");
+    return !!it;
+  });
+  const weaponSel = $("#edit-weapon-sel");
+  weaponSel.innerHTML = '<option value="">— из инвентаря —</option>';
+  invWeapons.forEach(name => {
+    const it = itemsCatalog.find(i => i.name === name && i.card_type === "weapon");
+    if (it) { const opt = document.createElement("option"); opt.value = it.id; opt.textContent = it.name; weaponSel.appendChild(opt); }
+  });
+  // Также добавляем все доступные из полного каталога оружия
+  equipment.weapons.forEach(w => {
+    if (!invWeapons.includes(w.name)) {
+      const opt = document.createElement("option"); opt.value = w.id; opt.textContent = `${w.name} (добавить из БД)`; weaponSel.appendChild(opt);
+    }
+  });
+
+  const armorSel = $("#edit-armor-sel");
+  const invArmors = (currentChar.fields?.inventory || []).filter(name => {
+    const it = itemsCatalog.find(i => i.name === name && i.card_type === "armor");
+    return !!it;
+  });
+  armorSel.innerHTML = '<option value="">— из инвентаря —</option>';
+  invArmors.forEach(name => {
+    const it = itemsCatalog.find(i => i.name === name && i.card_type === "armor");
+    if (it) { const opt = document.createElement("option"); opt.value = it.id; opt.textContent = it.name; armorSel.appendChild(opt); }
+  });
+  equipment.armor.forEach(a => {
+    if (!invArmors.includes(a.name)) {
+      const opt = document.createElement("option"); opt.value = a.id; opt.textContent = `${a.name} (добавить из БД)`; armorSel.appendChild(opt);
+    }
+  });
+
+  async function doEditEquip(slot, cardIdVal) {
+    // Если предмет не в инвентаре — сначала добавим
+    if (cardIdVal) {
+      const inInv = (currentChar.fields?.inventory || []).some(name => {
+        const it = itemsCatalog.find(i => i.id === +cardIdVal);
+        return it && it.name === name;
+      });
+      if (!inInv) await API.post(`/api/characters/${card.id}/inventory`, { item_id: +cardIdVal });
+    }
+    const { ok, data } = await API.post(`/api/characters/${card.id}/equip`, { slot, card_id: cardIdVal ? +cardIdVal : null });
+    if (ok) { toast(cardIdVal ? "Экипировано" : "Снято"); loadCards(); }
+    else toast(data?.errors?.slot || "Ошибка", true);
+  }
+
+  $("#edit-equip-weapon-btn").onclick = () => doEditEquip("weapon", weaponSel.value || null);
+  $("#edit-unequip-weapon-btn").onclick = () => doEditEquip("weapon", null);
+  $("#edit-equip-armor-btn").onclick = () => doEditEquip("armor", armorSel.value || null);
+  $("#edit-unequip-armor-btn").onclick = () => doEditEquip("armor", null);
 }
 
 function formByType(t) { return state.forms.find(f => f.card_type === t); }
@@ -1471,44 +1682,17 @@ const partyState = { chars: [], sessions: [], sessionId: "" };
 let _dragCtx = null; // { charId, cardId, cardType, fromSlot: null|"weapon"|"armor" }
 
 async function initParty() {
-  // Загружаем список сессий для селектора
-  partyState.sessions = await API.get("/api/adventure/list").catch(() => []);
-  renderSessionSelector();
-  await loadPartyChars();
-}
-
-function renderSessionSelector() {
-  const sel = $("#party-session-sel");
-  const prev = sel.value;
-  sel.innerHTML = '<option value="">Все персонажи</option>';
-  partyState.sessions.forEach(s => {
-    const o = document.createElement("option");
-    o.value = s.id;
-    const party = (s.party || []).map(c => c.name).join(", ");
-    o.textContent = `${s.title || s.adventure_type} (${party || "—"})`;
-    sel.appendChild(o);
-  });
-  // восстановить выбранную сессию если она ещё существует
-  if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
-  partyState.sessionId = sel.value;
+  // Оставлено для совместимости — теперь вызывается через openAdvPartyPanel
 }
 
 async function loadPartyChars() {
-  const sessionId = partyState.sessionId;
-  if (sessionId) {
-    const data = await API.get(`/api/adventure/${sessionId}`);
-    if (data.error) { partyState.chars = []; renderParty(); return; }
-    const sessionPartyIds = new Set((data.party || []).map(c => c.id));
-    const allChars = await API.get("/api/party");
-    partyState.chars = allChars.filter(c => sessionPartyIds.has(c.id));
-  } else {
-    partyState.chars = await API.get("/api/party");
-  }
+  partyState.chars = await API.get("/api/party");
   renderParty();
 }
 
 function renderParty() {
-  const grid = $("#party-grid");
+  const grid = $("#adv-party-grid");
+  if (!grid) return;
   grid.innerHTML = "";
   if (!partyState.chars.length) {
     grid.innerHTML = '<p style="color:var(--muted);text-align:center;padding:40px">Нет игровых персонажей.</p>';
@@ -1893,11 +2077,37 @@ function closePartyRadialMenu() {
   document.removeEventListener("pointerdown", _closePartyRadialOnce);
 }
 
-$("#party-refresh").onclick = initParty;
-$("#party-session-sel").onchange = async (e) => {
-  partyState.sessionId = e.target.value;
-  await loadPartyChars();
-};
+// ── Панель группы внутри приключения ──
+
+async function openAdvPartyPanel(sessionId) {
+  const panel = $("#adv-party-panel");
+  panel.classList.remove("hidden");
+  const grid = $("#adv-party-grid");
+  grid.innerHTML = '<p style="color:var(--muted);padding:20px">Загрузка…</p>';
+  try {
+    let chars;
+    if (sessionId) {
+      const data = await API.get(`/api/adventure/${sessionId}`);
+      if (data.error) { chars = []; }
+      else {
+        const sessionPartyIds = new Set((data.party || []).map(c => c.id));
+        const allChars = await API.get("/api/party");
+        chars = allChars.filter(c => sessionPartyIds.has(c.id));
+      }
+    } else {
+      chars = await API.get("/api/party");
+    }
+    partyState.chars = chars;
+    grid.innerHTML = "";
+    if (!chars.length) {
+      grid.innerHTML = '<p style="color:var(--muted);text-align:center;padding:40px">Нет персонажей в группе.</p>';
+    } else {
+      chars.forEach(ch => grid.appendChild(buildCharCard(ch)));
+    }
+  } catch (e) {
+    grid.innerHTML = '<p style="color:var(--muted);padding:20px">Ошибка загрузки.</p>';
+  }
+}
 
 // ───────────────────────── привязка событий ─────────────────────────
 
@@ -2090,6 +2300,8 @@ async function advStart() {
 }
 
 function openPlay(session, messages) {
+  // Закрываем панель группы при открытии новой сессии
+  $("#adv-party-panel").classList.add("hidden");
   advState.session = session;
   $("#adv-goalbar").innerHTML =
     `<span class="adv-goal-type">${advEsc(session.adventure_type)}</span>` +
@@ -2402,7 +2614,20 @@ function bindAdventure() {
   $("#adv-text").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); advSend(); }
   });
-  $("#adv-exit").onclick = () => { showAdvScreen("setup"); $("#adv-resume").classList.add("hidden"); };
+  $("#adv-exit").onclick = () => {
+    showAdvScreen("setup");
+    $("#adv-resume").classList.add("hidden");
+    $("#adv-party-panel").classList.add("hidden");
+  };
+  $("#adv-party-toggle").onclick = () => {
+    const panel = $("#adv-party-panel");
+    if (panel.classList.contains("hidden")) {
+      openAdvPartyPanel(advState.session && advState.session.id);
+    } else {
+      panel.classList.add("hidden");
+    }
+  };
+  $("#adv-party-close").onclick = () => $("#adv-party-panel").classList.add("hidden");
   $("#adv-resume-btn").onclick = openResume;
   $("#adv-settings-btn").onclick = openSettings;
   $("#adv-lore-btn").onclick = openLore;

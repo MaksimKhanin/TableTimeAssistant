@@ -227,6 +227,62 @@ def equip_character(session: Session, char_id: int, slot: str, card_id: Optional
     return serialize_character_for_party(char)
 
 
+def add_to_inventory(session: Session, char_id: int, item_id: int) -> Optional[dict]:
+    """Добавить предмет в инвентарь персонажа."""
+    char = session.get(Character, char_id)
+    if char is None:
+        raise CreateError({"__form__": "Персонаж не найден"})
+    item = session.get(Card, item_id)
+    if item is None:
+        raise CreateError({"item_id": "Предмет не найден"})
+    if item not in char.inventory:
+        char.inventory.append(item)
+        session.commit()
+        session.refresh(char)
+    return serialize_character_for_party(char)
+
+
+def remove_from_inventory(session: Session, char_id: int, item_id: int) -> Optional[dict]:
+    """Убрать предмет из инвентаря персонажа."""
+    char = session.get(Character, char_id)
+    if char is None:
+        return None
+    item = next((it for it in char.inventory if it.id == item_id), None)
+    if item:
+        char.inventory.remove(item)
+        session.commit()
+        session.refresh(char)
+    return serialize_character_for_party(char)
+
+
+def add_skill_to_character(session: Session, char_id: int, skill_id: int) -> Optional[dict]:
+    """Добавить навык персонажу."""
+    char = session.get(Character, char_id)
+    if char is None:
+        raise CreateError({"__form__": "Персонаж не найден"})
+    skill = session.get(Skill, skill_id)
+    if skill is None:
+        raise CreateError({"skill_id": "Навык не найден"})
+    if skill not in char.skills:
+        char.skills.append(skill)
+        session.commit()
+        session.refresh(char)
+    return serialize_character_for_party(char)
+
+
+def remove_skill_from_character(session: Session, char_id: int, skill_id: int) -> Optional[dict]:
+    """Убрать навык у персонажа."""
+    char = session.get(Character, char_id)
+    if char is None:
+        return None
+    skill = next((s for s in char.skills if s.id == skill_id), None)
+    if skill:
+        char.skills.remove(skill)
+        session.commit()
+        session.refresh(char)
+    return serialize_character_for_party(char)
+
+
 def list_equipment(session: Session) -> dict:
     """Все оружие и броня в системе — для выбора экипировки."""
     weapons = (

@@ -13,7 +13,6 @@
       <button class="mode-btn active" data-mode="home">🏠 Главная</button>
       <button class="mode-btn" data-mode="admin">🛠️ Отладка / Админка</button>
       <button class="mode-btn" data-mode="adv">📖 Приключение</button>
-      <button class="mode-btn" data-mode="party">👥 Группа</button>
     </nav>
   </header>
 
@@ -39,11 +38,6 @@
             <span class="big-ico">📖</span>
             <span class="big-title">Приключение</span>
             <span class="big-desc">Текстовое приключение с ИИ-гейм-мастером: завязка, персонажи и живое повествование</span>
-          </button>
-          <button class="big-btn" data-goto="party">
-            <span class="big-ico">👥</span>
-            <span class="big-title">Состояние группы</span>
-            <span class="big-desc">Инвентарь и экипировка персонажей — оружие, доспехи, предметы, навыки</span>
           </button>
         </div>
       </div>
@@ -295,8 +289,19 @@
 
       <!-- Игра -->
       <div class="adv-play hidden" id="adv-play">
+        <!-- Панель группы (открывается по кнопке) -->
+        <div class="adv-party-panel hidden" id="adv-party-panel">
+          <div class="adv-party-panel-head">
+            <h3>👥 Группа</h3>
+            <button class="modal-close" id="adv-party-close">✕</button>
+          </div>
+          <div class="party-grid" id="adv-party-grid"></div>
+        </div>
+
         <div class="adv-main">
-          <div class="adv-goalbar" id="adv-goalbar"></div>
+          <div class="adv-goalbar" id="adv-goalbar">
+            <button class="btn-secondary adv-party-btn" id="adv-party-toggle">👥 Группа</button>
+          </div>
           <div class="adv-chat" id="adv-chat"></div>
           <div class="adv-input">
             <select id="adv-speaker" title="От лица какого персонажа вы говорите"></select>
@@ -325,20 +330,6 @@
       </div>
     </section>
 
-    <!-- ───────── Состояние группы ───────── -->
-    <section class="view hidden" data-view="party">
-      <div class="party-head">
-        <h2>👥 Состояние группы</h2>
-        <div class="party-session-sel-wrap">
-          <label class="field-label" for="party-session-sel">Сессия:</label>
-          <select id="party-session-sel">
-            <option value="">Все персонажи</option>
-          </select>
-        </div>
-        <button class="btn-secondary" id="party-refresh">↻ Обновить</button>
-      </div>
-      <div class="party-grid" id="party-grid"></div>
-    </section>
   </main>
 
   <!-- ───────── Модалка формы ───────── -->
