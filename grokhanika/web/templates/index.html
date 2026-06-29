@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Гроханика — мастерская</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">⚔️ Гроханика <span class="brand-sub">мастерская</span></div>
+    <nav class="modes">
+      <button class="mode-btn active" data-mode="home">🏠 Главная</button>
+      <button class="mode-btn" data-mode="admin">🛠️ Отладка / Админка</button>
+      <button class="mode-btn" data-mode="adv">📖 Приключение</button>
+    </nav>
+  </header>
+
+  <main id="app">
+    <!-- ───────── Главная ───────── -->
+    <section class="view" data-view="home">
+      <div class="hero">
+        <h1>Мастерская «Гроханики»</h1>
+        <p>Отладочный инструмент поверх игрового движка. Просматривайте сущности
+           мира, добавляйте новые и прогоняйте бои так, будто они идут в игре.</p>
+        <div class="big-buttons">
+          <button class="big-btn" data-goto="admin" data-goto-tab="world">
+            <span class="big-ico">🛠️</span>
+            <span class="big-title">Мастерская</span>
+            <span class="big-desc">Карточки БД по категориям, фильтры, сортировки, добавление сущностей</span>
+          </button>
+          <button class="big-btn" data-goto="admin" data-goto-tab="sim">
+            <span class="big-ico">⚔️</span>
+            <span class="big-title">Имитация боя</span>
+            <span class="big-desc">Соберите врагов и союзников (за NPC играет ИИ) и симулируйте сражение</span>
+          </button>
+          <button class="big-btn" data-goto="adv">
+            <span class="big-ico">📖</span>
+            <span class="big-title">Приключение</span>
+            <span class="big-desc">Текстовое приключение с ИИ-гейм-мастером: завязка, персонажи и живое повествование</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────── Отладка / Админка (с под-вкладками) ───────── -->
+    <section class="view hidden" data-view="admin">
+
+      <!-- Под-вкладки -->
+      <div class="admin-subtabs">
+        <button class="admin-sub-tab active" data-tab="world">🗂 Наполнение мира</button>
+        <button class="admin-sub-tab" data-tab="sim">⚔️ Имитация боя</button>
+        <button class="admin-sub-tab" data-tab="llm">🤖 LLM / RAG</button>
+      </div>
+
+      <!-- ── Под-вкладка: Наполнение мира ── -->
+      <div class="admin-sub-section" data-section="world">
+        <div class="admin-head">
+          <div class="cat-tabs" id="cat-tabs"></div>
+          <button class="add-btn" id="add-btn">➕ Добавить сущность</button>
+        </div>
+        <div class="toolbar" id="toolbar"></div>
+        <div class="card-grid" id="card-grid"></div>
+        <div class="empty hidden" id="empty-state">Ничего не найдено.</div>
+      </div>
+
+      <!-- ── Под-вкладка: Имитация боя ── -->
+      <div class="admin-sub-section hidden" data-section="sim">
+        <div class="sim-setup">
+          <div class="roster-col" data-team="enemies">
+            <h3>👹 Враги</h3>
+            <div class="team-list" id="team-enemies"></div>
+          </div>
+          <div class="sim-center">
+            <div class="pool">
+              <h4>Доступные участники</h4>
+              <p class="hint">Кликните, чтобы добавить во врагов или союзников.</p>
+              <div class="pool-list" id="pool-list"></div>
+            </div>
+            <div class="sim-controls">
+              <label>Сид (для воспроизводимости):
+                <input type="number" id="sim-seed" placeholder="напр. 7">
+              </label>
+              <label class="sim-manual-label">
+                <input type="checkbox" id="sim-manual">
+                <span>Ручное управление союзниками</span>
+              </label>
+              <button class="sim-go" id="sim-go">▶ Симулировать бой</button>
+            </div>
+          </div>
+          <div class="roster-col" data-team="allies">
+            <h3>🛡️ Союзники <small id="allies-hint">(ИИ играет за всех)</small></h3>
+            <div class="team-list" id="team-allies"></div>
+          </div>
+        </div>
+
+        <!-- Автобой (просмотр) -->
+        <div class="sim-stage hidden" id="sim-stage">
+          <div class="stage-bar">
+            <div class="stage-side" id="stage-enemies"></div>
+            <div class="stage-vs">VS</div>
+            <div class="stage-side" id="stage-allies"></div>
+          </div>
+          <div class="stage-meta">
+            <span id="stage-round">Раунд —</span>
+            <div class="playback">
+              <button id="pb-prev">⏮</button>
+              <button id="pb-play">⏯ Авто</button>
+              <button id="pb-next">⏭</button>
+            </div>
+          </div>
+          <div class="battle-log" id="battle-log"></div>
+          <div class="outcome hidden" id="outcome"></div>
+        </div>
+
+        <!-- Интерактивный бой -->
+        <div class="battle-arena hidden" id="battle-arena">
+          <div class="ba-header">
+            <div class="ba-meta">
+              <span class="ba-round-label" id="ba-round-label">Начало боя</span>
+              <span class="ba-turn-label" id="ba-turn-label"></span>
+            </div>
+            <div class="ba-hint" id="ba-hint">Зажмите карточку и перетащите на врага, или удерживайте для меню</div>
+          </div>
+
+          <div class="ba-field">
+            <!-- Враги сверху -->
+            <div class="ba-row ba-enemies" id="ba-enemies"></div>
+
+            <!-- Разделитель -->
+            <div class="ba-divider">
+              <div class="ba-divider-line"></div>
+              <span class="ba-divider-icon">⚔️</span>
+              <div class="ba-divider-line"></div>
+            </div>
+
+            <!-- Союзники снизу -->
+            <div class="ba-row ba-allies" id="ba-allies"></div>
+          </div>
+
+          <div class="ba-bottom">
+            <div class="ba-log-wrap">
+              <div class="ba-log-header">
+                <span>Лог событий</span>
+                <label class="ba-verbose-toggle" title="Показать подробный лог для LLM">
+                  <input type="checkbox" id="ba-verbose"> подробный
+                </label>
+              </div>
+              <div class="battle-log" id="ba-log"></div>
+              <div class="ba-verbose-wrap hidden" id="ba-verbose-wrap">
+                <div class="ba-verbose-label">Подробный лог (для LLM)</div>
+                <pre class="ba-verbose-log" id="ba-verbose-log"></pre>
+              </div>
+            </div>
+            <div class="ba-side-actions">
+              <button class="ba-flee-btn" id="ba-flee" title="Вся группа пытается сбежать (d20+DEX ≥ 10)">
+                🏃 Бежать
+              </button>
+              <button class="ba-pass-btn" id="ba-pass" title="Пропустить ход текущего персонажа">
+                ⏭ Пас
+              </button>
+            </div>
+          </div>
+
+          <div class="outcome hidden" id="ba-outcome"></div>
+        </div>
+      </div>
+
+      <!-- ── Под-вкладка: LLM / RAG ── -->
+      <div class="admin-sub-section hidden" data-section="llm">
+        <div class="llm-settings-page">
+          <div class="llm-settings-head">
+            <h3>🤖 Настройки LLM и RAG</h3>
+            <p class="hint">Поддерживается любой провайдер с OpenAI-совместимым API: OpenAI, Anthropic, Groq, Mistral, Ollama, vLLM, llama.cpp и др. Достаточно указать base_url, модель и API-ключ.</p>
+          </div>
+
+          <!-- Быстрый выбор провайдера -->
+          <div class="llm-provider-row">
+            <span class="field-label">Быстрый выбор провайдера:</span>
+            <div class="llm-provider-chips" id="llm-provider-chips">
+              <button class="llm-chip" data-url="https://api.openai.com/v1" data-model="gpt-4o" data-key-hint="sk-…">OpenAI</button>
+              <button class="llm-chip" data-url="https://api.anthropic.com/v1" data-model="claude-opus-4-8" data-key-hint="anthropic key">Anthropic</button>
+              <button class="llm-chip" data-url="https://api.groq.com/openai/v1" data-model="llama-3.3-70b-versatile" data-key-hint="gsk_…">Groq</button>
+              <button class="llm-chip" data-url="https://api.mistral.ai/v1" data-model="mistral-large-latest" data-key-hint="API key">Mistral</button>
+              <button class="llm-chip" data-url="http://localhost:11434/v1" data-model="qwen2.5:7b-instruct" data-key-hint="">Ollama (локальный)</button>
+              <button class="llm-chip" data-url="http://localhost:8000/v1" data-model="" data-key-hint="">vLLM (локальный)</button>
+            </div>
+          </div>
+
+          <div class="llm-settings-grid">
+            <div class="llm-settings-col">
+              <fieldset class="ai-group">
+                <legend>🎙 Повествователь (ГМ)</legend>
+                <label class="field"><span class="field-label">Эндпоинт (base_url)</span>
+                  <input id="llm-narrator-base_url" placeholder="http://localhost:11434/v1"></label>
+                <label class="field"><span class="field-label">Модель</span>
+                  <input id="llm-narrator-model" placeholder="qwen2.5:7b-instruct"></label>
+                <label class="field"><span class="field-label">API-ключ (опц.)</span>
+                  <input id="llm-narrator-api_key" type="password" placeholder="(пусто для локального)"></label>
+                <label class="field"><span class="field-label">Температура</span>
+                  <input id="llm-narrator-temperature" type="number" step="0.05" min="0" max="2"></label>
+                <div class="ai-status" id="llm-narrator-status"></div>
+              </fieldset>
+
+              <fieldset class="ai-group">
+                <legend>🧠 Системная модель (интент/компактинг)</legend>
+                <label class="field"><span class="field-label">Эндпоинт (base_url)</span>
+                  <input id="llm-system-base_url" placeholder="http://localhost:11434/v1"></label>
+                <label class="field"><span class="field-label">Модель</span>
+                  <input id="llm-system-model" placeholder="qwen2.5:7b-instruct"></label>
+                <label class="field"><span class="field-label">API-ключ (опц.)</span>
+                  <input id="llm-system-api_key" type="password" placeholder="(пусто для локального)"></label>
+                <label class="field"><span class="field-label">Температура</span>
+                  <input id="llm-system-temperature" type="number" step="0.05" min="0" max="2"></label>
+                <div class="ai-status" id="llm-system-status"></div>
+              </fieldset>
+            </div>
+
+            <div class="llm-settings-col">
+              <fieldset class="ai-group">
+                <legend>🔎 Эмбеддер (RAG)</legend>
+                <label class="field"><span class="field-label">Модель sentence-transformers</span>
+                  <input id="llm-embedder-model" placeholder="intfloat/multilingual-e5-base"></label>
+                <p class="hint">После смены модели запустите <code>scripts/reindex_embeddings.py</code> для переиндексации базы знаний.</p>
+              </fieldset>
+
+              <fieldset class="ai-group">
+                <legend>📚 Контекст памяти</legend>
+                <label class="field"><span class="field-label">Окно (сообщений)</span>
+                  <input id="llm-memory-window_messages" type="number" min="2"></label>
+                <label class="field"><span class="field-label">Порог компактинга</span>
+                  <input id="llm-memory-compact_threshold" type="number" min="2"></label>
+                <label class="field"><span class="field-label">Эпизодических воспоминаний (top-k)</span>
+                  <input id="llm-memory-episodic_top_k" type="number" min="0"></label>
+                <label class="field"><span class="field-label">RAG-результатов (top-k)</span>
+                  <input id="llm-memory-retrieval_top_k" type="number" min="1"></label>
+              </fieldset>
+            </div>
+          </div>
+
+          <div class="llm-settings-actions">
+            <button class="btn-secondary" id="llm-test">🔌 Проверить подключение</button>
+            <button class="btn-primary" id="llm-save">💾 Сохранить настройки</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────── Приключение ───────── -->
+    <section class="view hidden" data-view="adv">
+      <!-- Сетап -->
+      <div class="adv-setup" id="adv-setup">
+        <div class="adv-setup-head">
+          <h2>📖 Новое приключение</h2>
+          <div class="adv-setup-actions">
+            <button class="btn-secondary" id="adv-resume-btn">↩ Продолжить</button>
+            <button class="btn-secondary" id="adv-lore-btn">📜 Лор-база</button>
+            <button class="btn-secondary" id="adv-settings-btn">⚙️ Настройки ИИ</button>
+          </div>
+        </div>
+
+        <div class="adv-form">
+          <div class="field">
+            <span class="field-label">Тип приключения</span>
+            <div class="adv-presets" id="adv-presets"></div>
+            <input class="adv-custom-type hidden" id="adv-type-custom" placeholder="Опишите свой тип приключения">
+          </div>
+          <label class="field">
+            <span class="field-label">Завязка / описание (свободно)</span>
+            <textarea id="adv-desc" rows="4" placeholder="Где начинается приключение, что происходит, чего ждут герои…"></textarea>
+          </label>
+          <label class="field">
+            <span class="field-label">Главная цель</span>
+            <textarea id="adv-goal" rows="2" placeholder="К чему стремится партия"></textarea>
+          </label>
+          <div class="field">
+            <span class="field-label">Персонажи партии</span>
+            <p class="hint">Кликните, чтобы добавить/убрать героя.</p>
+            <div class="adv-party-pick" id="adv-party-pick"></div>
+          </div>
+          <button class="btn-primary adv-start-btn" id="adv-start">▶ Начать приключение</button>
+        </div>
+
+        <div class="adv-resume hidden" id="adv-resume">
+          <h3>Сохранённые приключения</h3>
+          <div class="adv-resume-list" id="adv-resume-list"></div>
+        </div>
+      </div>
+
+      <!-- Игра -->
+      <div class="adv-play hidden" id="adv-play">
+        <!-- Панель группы (открывается по кнопке) -->
+        <div class="adv-party-panel hidden" id="adv-party-panel">
+          <div class="adv-party-panel-head">
+            <h3>👥 Группа</h3>
+            <button class="modal-close" id="adv-party-close">✕</button>
+          </div>
+          <div class="party-grid" id="adv-party-grid"></div>
+        </div>
+
+        <div class="adv-main">
+          <div class="adv-goalbar" id="adv-goalbar">
+            <button class="btn-secondary adv-party-btn" id="adv-party-toggle">👥 Группа</button>
+          </div>
+          <div class="adv-chat" id="adv-chat"></div>
+          <div class="adv-input">
+            <select id="adv-speaker" title="От лица какого персонажа вы говорите"></select>
+            <textarea id="adv-text" rows="2" placeholder="Что вы делаете или говорите?"></textarea>
+            <button class="btn-primary" id="adv-send">Отправить</button>
+          </div>
+        </div>
+        <aside class="adv-scene">
+          <div class="adv-scene-head">
+            <h3>🎬 Сцена</h3>
+            <button class="btn-secondary adv-exit-btn" id="adv-exit">⟵ К списку</button>
+          </div>
+          <div class="adv-scene-section">
+            <div class="adv-scene-title">Локация</div>
+            <div id="adv-scene-loc" class="adv-scene-loc"><span class="muted">—</span></div>
+          </div>
+          <div class="adv-scene-section">
+            <div class="adv-scene-title">Действующие лица</div>
+            <div id="adv-scene-npcs" class="adv-scene-cards"></div>
+          </div>
+          <div class="adv-scene-section">
+            <div class="adv-scene-title">Предметы</div>
+            <div id="adv-scene-items" class="adv-scene-cards"></div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ───────── Модалка формы ───────── -->
+  <div class="modal-backdrop hidden" id="modal">
+    <div class="modal">
+      <div class="modal-head">
+        <h2 id="modal-title">Новая сущность</h2>
+        <button class="modal-close" id="modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <label class="field">
+          <span class="field-label">Тип сущности</span>
+          <select id="form-type"></select>
+          <span class="field-hint" id="form-type-hint"></span>
+        </label>
+        <form id="entity-form" class="entity-form"></form>
+        <div class="form-error hidden" id="form-error"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn-secondary" id="form-cancel">Отмена</button>
+        <button class="btn-primary" id="form-submit">Создать</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────── Модалка карточки ───────── -->
+  <div class="modal-backdrop hidden" id="detail-modal">
+    <div class="modal modal-detail" id="detail-body"></div>
+  </div>
+
+  <!-- ───────── Модалка настроек ИИ (из приключения) ───────── -->
+  <div class="modal-backdrop hidden" id="ai-modal">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>⚙️ Настройки ИИ</h2>
+        <button class="modal-close" id="ai-close">✕</button>
+      </div>
+      <div class="modal-body" id="ai-body">
+        <p class="hint">Те же настройки доступны в разделе <b>Отладка / Админка → LLM / RAG</b> с расширенными опциями.</p>
+
+        <fieldset class="ai-group">
+          <legend>🎙 Повествователь (ГМ)</legend>
+          <label class="field"><span class="field-label">Эндпоинт (base_url)</span>
+            <input id="ai-narrator-base_url" placeholder="http://localhost:11434/v1"></label>
+          <label class="field"><span class="field-label">Модель</span>
+            <input id="ai-narrator-model" placeholder="qwen2.5:7b-instruct"></label>
+          <label class="field"><span class="field-label">API-ключ (опц.)</span>
+            <input id="ai-narrator-api_key" type="password" placeholder="(пусто для локального)"></label>
+          <label class="field"><span class="field-label">Температура</span>
+            <input id="ai-narrator-temperature" type="number" step="0.05" min="0" max="2"></label>
+          <div class="ai-status" id="ai-narrator-status"></div>
+        </fieldset>
+
+        <fieldset class="ai-group">
+          <legend>🧠 Системная модель (интент/компактинг)</legend>
+          <label class="field"><span class="field-label">Эндпоинт (base_url)</span>
+            <input id="ai-system-base_url" placeholder="http://localhost:11434/v1"></label>
+          <label class="field"><span class="field-label">Модель</span>
+            <input id="ai-system-model" placeholder="qwen2.5:7b-instruct"></label>
+          <label class="field"><span class="field-label">API-ключ (опц.)</span>
+            <input id="ai-system-api_key" type="password" placeholder="(пусто для локального)"></label>
+          <label class="field"><span class="field-label">Температура</span>
+            <input id="ai-system-temperature" type="number" step="0.05" min="0" max="2"></label>
+          <div class="ai-status" id="ai-system-status"></div>
+        </fieldset>
+
+        <fieldset class="ai-group">
+          <legend>🔎 Эмбеддер (RAG)</legend>
+          <label class="field"><span class="field-label">Модель sentence-transformers</span>
+            <input id="ai-embedder-model" placeholder="intfloat/multilingual-e5-base"></label>
+        </fieldset>
+
+        <fieldset class="ai-group">
+          <legend>📚 Контекст</legend>
+          <label class="field"><span class="field-label">Окно (сообщений)</span>
+            <input id="ai-memory-window_messages" type="number" min="2"></label>
+          <label class="field"><span class="field-label">Порог компактинга</span>
+            <input id="ai-memory-compact_threshold" type="number" min="2"></label>
+          <label class="field"><span class="field-label">Эпизодических воспоминаний (top-k)</span>
+            <input id="ai-memory-episodic_top_k" type="number" min="0"></label>
+          <label class="field"><span class="field-label">RAG-результатов (top-k)</span>
+            <input id="ai-memory-retrieval_top_k" type="number" min="1"></label>
+        </fieldset>
+      </div>
+      <div class="modal-foot">
+        <button class="btn-secondary" id="ai-test">🔌 Проверить</button>
+        <button class="btn-primary" id="ai-save">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────── Модалка лор-базы ───────── -->
+  <div class="modal-backdrop hidden" id="lore-modal">
+    <div class="modal modal-wide">
+      <div class="modal-head">
+        <h2>📜 Лор-база</h2>
+        <button class="modal-close" id="lore-close">✕</button>
+      </div>
+      <div class="modal-body lore-body">
+        <div class="lore-list-col">
+          <div class="lore-filter">
+            <select id="lore-filter">
+              <option value="all">Все категории</option>
+              <option value="location">Локации</option>
+              <option value="faction">Фракции</option>
+              <option value="history">История</option>
+              <option value="custom">Прочее</option>
+            </select>
+            <button class="btn-secondary" id="lore-new">➕ Новый факт</button>
+          </div>
+          <div class="lore-list" id="lore-list"></div>
+        </div>
+        <div class="lore-edit-col">
+          <input type="hidden" id="lore-edit-id">
+          <label class="field"><span class="field-label">Название</span>
+            <input id="lore-edit-name" placeholder="напр. Город Импродор"></label>
+          <label class="field"><span class="field-label">Категория</span>
+            <select id="lore-edit-category">
+              <option value="location">Локация</option>
+              <option value="faction">Фракция</option>
+              <option value="history">История</option>
+              <option value="custom">Прочее</option>
+            </select></label>
+          <label class="field"><span class="field-label">Текст факта</span>
+            <textarea id="lore-edit-desc" rows="8" placeholder="Описание, которое ИИ-ГМ будет использовать как факт мира"></textarea></label>
+          <div class="lore-edit-actions">
+            <button class="btn-secondary" id="lore-edit-clear">Очистить</button>
+            <button class="btn-primary" id="lore-edit-save">Сохранить факт</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────── Попап выбора действия ───────── -->
+  <div class="ap-backdrop hidden" id="action-popup-bg"></div>
+  <div class="action-popup hidden" id="action-popup">
+    <div class="ap-title" id="ap-title">Выберите действие</div>
+    <div class="ap-list" id="ap-list"></div>
+    <button class="ap-cancel" id="ap-cancel">✕ Отмена</button>
+  </div>
+
+  <!-- ───────── Радиальное меню (бой + инвентарь) ───────── -->
+  <div class="radial-menu hidden" id="radial-menu"></div>
+
+  <div class="toast hidden" id="toast"></div>
+
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

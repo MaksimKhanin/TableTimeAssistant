@@ -1,0 +1,402 @@
+"""Сериализация ORM-карточек в JSON-словари для фронтенда.
+
+Карточка отдаётся с тремя слоями данных:
+
+* **общие поля** (id, тип, имя, описание, арт);
+* **поля типа** (урон оружия, HP существа, …) — для подробной карточки;
+* **вычисленный стат-блок** (HP, защиты, бонусы атак) для персонажей и существ —
+  считается тем же движком, что и в бою (``Combatant``), так что админ видит те
+  же числа, что игрок.
+"""
+from __future__ import annotations
+
+import os
+from typing import Optional
+from urllib.parse import quote
+
+from flask import url_for
+
+from ..db.models import (
+    Ability,
+    Armor,
+    Card,
+    Character,
+    Creature,
+    Instrument,
+    Item,
+    LoreEntry,
+    Scroll,
+    Skill,
+    SpellBook,
+    Weapon,
+)
+from ..engine.combatant import Combatant
+from ..enums import CardType, EffectTarget
+
+# где лежит арт карточек (имя файла берётся из Card.image_id)
+_IMAGES_SUBDIR = os.path.join("images", "cards")
+
+
+# ───────────────────────── изображение ─────────────────────────
+
+
+def _image_url(card: Card) -> Optional[str]:
+    """URL арта карточки или ``None`` (тогда фронт рисует заглушку по типу)."""
+    if not card.image_id:
+        return None
+    static_root = os.path.join(os.path.dirname(__file__), "static")
+    # Поддержка как старого формата (просто имя файла), так и нового (тип/файл)
+    # Нормализуем разделители путей для кроссплатформенности
+    image_path = card.image_id.replace("/", os.sep)
+    path = os.path.join(static_root, _IMAGES_SUBDIR, image_path)
+    if not os.path.isfile(path):
+        return None
+    # В URL всегда используем прямые слеши (нормализуем любой разделитель)
+    url_path = card.image_id.replace("\\", "/")
+    # Нормализуем весь путь для URL
+    full_url_path = f"{_IMAGES_SUBDIR}/{url_path}".replace("\\", "/")
+    
+    # Используем прямой URL без url_for() чтобы избежать двойного кодирования
+    return f"/static/{full_url_path}"
+
+
+# ───────────────────────── стат-блок (через движок) ─────────────────────────
+
+
+def _stat_block(card: Card) -> Optional[dict]:
+    """Вычисленные боевые атрибуты персонажа/существа (как в бою)."""
+    if not isinstance(card, (Character, Creature)):
+        return None
+    try:
+        c = Combatant(card, side="preview")
+    except Exception:  # pragma: no cover - не валим витрину из-за кривой карточки
+        return None
+    return {
+        "hp": c.max_hp,
+        "phys_defense": c.phys_defense,
+        "mag_defense": c.mag_defense,
+        "mental_defense": c.mental_defense,
+        "phys_attack_bonus": c.phys_attack_bonus,
+        "mag_attack_bonus": c.mag_attack_bonus,
+        "mental_attack_bonus": c.mental_attack_bonus,
+        "phys_damage": c.phys_damage_dice,
+    }
+
+
+# ───────────────────────── поля по типу карточки ─────────────────────────
+
+
+def _type_fields(card: Card) -> dict:
+    if isinstance(card, Character):
+        return {
+            "is_player": card.is_player,
+            "is_sentient": card.is_sentient,
+            "strength": card.base_strength,
+            "dexterity": card.base_dexterity,
+            "wisdom": card.base_wisdom,
+            "charisma": card.base_charisma,
+            "money": card.money,
+            "weapon": card.equipped_weapon.name if card.equipped_weapon else None,
+            "armor": card.equipped_armor.name if card.equipped_armor else None,
+            "inventory": [it.name for it in card.inventory],
+            "skills": [s.name for s in card.skills],
+        }
+    if isinstance(card, Creature):
+        return {
+            "is_sentient": card.is_sentient,
+            "hp": card.hp,
+            "dexterity": card.dexterity,
+            "phys_defense": card.phys_defense,
+            "mag_defense": card.mag_defense,
+            "mental_defense": card.mental_defense,
+            "phys_damage_dice": card.phys_damage_dice,
+            "strength": card.strength,
+            "charisma": card.charisma,
+            "wisdom": card.wisdom,
+        }
+    if isinstance(card, Weapon):
+        return {
+            "damage_dice": card.damage_dice,
+            "str_requirement": card.str_requirement,
+            "dex_requirement": card.dex_requirement,
+            "is_ranged": card.is_ranged,
+            "price": card.price,
+            # самонаводящееся оружие игнорирует чужой Бастион при выборе цели
+            "ignores_bastion": any(
+                e.target == EffectTarget.IGNORE_BASTION.value for e in card.effects
+            ),
+        }
+    if isinstance(card, Armor):
+        return {
+            "phys_def_bonus": card.phys_def_bonus,
+            "str_requirement": card.str_requirement,
+            "dex_requirement": card.dex_requirement,
+            "price": card.price,
+        }
+    if isinstance(card, Item):
+        return {
+            "is_consumable": card.is_consumable,
+            "heal_dice": card.heal_dice,
+            "price": card.price,
+            "grants_skill": card.grants_skill.name if card.grants_skill else None,
+        }
+    if isinstance(card, (SpellBook, Scroll)):
+        return {
+            "spell_name": card.spell_name,
+            "damage_dice": card.damage_dice,
+            "heal_dice": card.heal_dice,
+            "difficulty": card.difficulty,
+            "attack_stat": card.attack_stat,
+            "is_consumable": card.is_consumable,
+            "price": card.price,
+        }
+    if isinstance(card, Skill):
+        return {
+            "is_passive": card.is_passive,
+            "spell_name": card.spell_name or None,
+            "damage_dice": card.damage_dice,
+            "heal_dice": card.heal_dice,
+            "difficulty": card.difficulty,
+            "attack_stat": card.attack_stat if card.damage_dice else None,
+            "price": card.price,
+            "non_sellable": True,  # навык нельзя продать
+            "in_inventory": False,  # навык не занимает слот инвентаря
+        }
+    if isinstance(card, Instrument):
+        return {
+            "price": card.price,
+            "grants_skill": card.grants_skill.name if card.grants_skill else None,
+        }
+    if isinstance(card, LoreEntry):
+        return {
+            "category": card.category,
+        }
+    return {}
+
+
+# ───────────────────────── значения полей для формы редактирования ─────────────────────────
+
+
+def _form_values(card: Card) -> dict:
+    """Текущие значения карточки, ключи == имена полей формы (для предзаполнения при редактировании)."""
+    base: dict = {
+        "name": card.name,
+        "description": card.description or "",
+        "image_id": card.image_id or "",
+        "is_unique": card.is_unique,
+    }
+    if isinstance(card, Character):
+        base.update({
+            "is_player": card.is_player,
+            "is_sentient": card.is_sentient,
+            "base_strength": card.base_strength,
+            "base_dexterity": card.base_dexterity,
+            "base_wisdom": card.base_wisdom,
+            "base_charisma": card.base_charisma,
+            "money": card.money,
+            "current_hp": card.current_hp,
+            "equipped_weapon_id": card.equipped_weapon_id,
+            "equipped_armor_id": card.equipped_armor_id,
+        })
+    elif isinstance(card, Creature):
+        base.update({
+            "is_sentient": card.is_sentient,
+            "hp": card.hp,
+            "dexterity": card.dexterity,
+            "phys_defense": card.phys_defense,
+            "mag_defense": card.mag_defense,
+            "mental_defense": card.mental_defense,
+            "phys_damage_dice": card.phys_damage_dice,
+            "strength": card.strength,
+            "charisma": card.charisma,
+            "wisdom": card.wisdom,
+        })
+    elif isinstance(card, Weapon):
+        base.update({
+            "damage_dice": card.damage_dice,
+            "str_requirement": card.str_requirement,
+            "dex_requirement": card.dex_requirement,
+            "is_ranged": card.is_ranged,
+            "price": card.price,
+        })
+    elif isinstance(card, Armor):
+        base.update({
+            "phys_def_bonus": card.phys_def_bonus,
+            "str_requirement": card.str_requirement,
+            "dex_requirement": card.dex_requirement,
+            "price": card.price,
+        })
+    elif isinstance(card, Item):
+        base.update({
+            "is_consumable": card.is_consumable,
+            "heal_dice": card.heal_dice,
+            "grants_skill_id": card.grants_skill_id,
+            "price": card.price,
+        })
+    elif isinstance(card, (SpellBook, Scroll)):
+        base.update({
+            "spell_name": card.spell_name,
+            "damage_dice": card.damage_dice,
+            "heal_dice": card.heal_dice,
+            "difficulty": card.difficulty,
+            "attack_stat": card.attack_stat,
+            "price": card.price,
+        })
+    elif isinstance(card, Skill):
+        base.update({
+            "is_passive": card.is_passive,
+            "spell_name": card.spell_name or "",
+            "damage_dice": card.damage_dice,
+            "heal_dice": card.heal_dice,
+            "difficulty": card.difficulty,
+            "attack_stat": card.attack_stat,
+            "price": card.price,
+        })
+    elif isinstance(card, Instrument):
+        base.update({
+            "price": card.price,
+            "grants_skill_id": card.grants_skill_id,
+        })
+    return base
+
+
+# ───────────────────────── публичные сериализаторы ─────────────────────────
+
+# человекочитаемые имена типов
+TYPE_LABELS = {
+    CardType.CHARACTER.value: "Персонаж",
+    CardType.CREATURE.value: "Существо",
+    CardType.WEAPON.value: "Оружие",
+    CardType.ARMOR.value: "Броня",
+    CardType.ITEM.value: "Предмет",
+    CardType.SPELLBOOK.value: "Том магии",
+    CardType.SCROLL.value: "Свиток",
+    CardType.INSTRUMENT.value: "Инструмент",
+    CardType.SKILL.value: "Навык",
+    CardType.LORE.value: "Лор",
+}
+
+
+def serialize_card(card: Card, *, full: bool = True) -> dict:
+    """Карточка → словарь. ``full`` добавляет поля типа и стат-блок."""
+    data = {
+        "id": card.id,
+        "card_type": card.card_type,
+        "type_label": TYPE_LABELS.get(card.card_type, card.card_type),
+        "name": card.name,
+        "description": card.description or "",
+        "image_id": card.image_id,
+        "image_url": _image_url(card),
+        "is_unique": card.is_unique,
+        "abilities": [a.name for a in card.abilities],
+    }
+    if full:
+        data["fields"] = _type_fields(card)
+        data["form_values"] = _form_values(card)
+        stats = _stat_block(card)
+        if stats is not None:
+            data["stats"] = stats
+    return data
+
+
+def _actions_summary(ability: Ability) -> str:
+    """Короткое описание действий способности для витрины."""
+    parts = []
+    for act in ability.actions or []:
+        t = act.get("type", "?")
+        if t == "summon":
+            parts.append(f"призыв ×{act.get('count', 1)}")
+        elif t == "instakill":
+            parts.append("мгновенное убийство")
+        elif t in ("buff_allies", "debuff_enemies"):
+            parts.append("бафф союзников" if t == "buff_allies" else "дебафф врагов")
+        else:
+            parts.append(t)
+    return ", ".join(parts)
+
+
+def _serialize_inventory_item(card: Card) -> dict:
+    """Краткое описание предмета в инвентаре персонажа для экрана группы."""
+    from ..enums import ActivationSource
+    data: dict = {
+        "id": card.id,
+        "card_type": card.card_type,
+        "type_icon": {
+            "item": "🎒", "spellbook": "📖", "scroll": "📜", "instrument": "🪕",
+            "weapon": "⚔️", "armor": "🛡️",
+        }.get(card.card_type, "❓"),
+        "name": card.name,
+        "description": card.description or "",
+    }
+    if hasattr(card, "heal_dice") and card.heal_dice:
+        data["heal_dice"] = card.heal_dice
+    if hasattr(card, "is_consumable"):
+        data["is_consumable"] = bool(card.is_consumable)
+    data["passive_in_inventory"] = any(
+        getattr(e, "activation_source", None) == ActivationSource.IN_INVENTORY.value
+        for e in card.effects
+    )
+    if hasattr(card, "grants_skill") and card.grants_skill:
+        data["grants_skill"] = card.grants_skill.name
+    if hasattr(card, "spell_name") and card.spell_name:
+        data["spell_name"] = card.spell_name
+        data["damage_dice"] = getattr(card, "damage_dice", None)
+    return data
+
+
+def serialize_character_for_party(char: Character) -> dict:
+    """Развёрнутый снимок персонажа для экрана состояния группы."""
+    try:
+        c = Combatant(char, side="preview")
+        max_hp = c.max_hp
+        phys_defense = c.phys_defense
+        mag_defense = c.mag_defense
+    except Exception:
+        max_hp = phys_defense = mag_defense = 0
+    current_hp = char.current_hp if char.current_hp is not None else max_hp
+    return {
+        "id": char.id,
+        "name": char.name,
+        "description": char.description or "",
+        "current_hp": current_hp,
+        "max_hp": max_hp,
+        "phys_defense": phys_defense,
+        "mag_defense": mag_defense,
+        "strength": char.base_strength,
+        "dexterity": char.base_dexterity,
+        "wisdom": char.base_wisdom,
+        "charisma": char.base_charisma,
+        "money": char.money,
+        "equipped_weapon": {
+            "id": char.equipped_weapon.id,
+            "name": char.equipped_weapon.name,
+            "damage_dice": char.equipped_weapon.damage_dice,
+            "description": char.equipped_weapon.description or "",
+        } if char.equipped_weapon else None,
+        "equipped_armor": {
+            "id": char.equipped_armor.id,
+            "name": char.equipped_armor.name,
+            "phys_def_bonus": char.equipped_armor.phys_def_bonus,
+            "description": char.equipped_armor.description or "",
+        } if char.equipped_armor else None,
+        "inventory": [_serialize_inventory_item(it) for it in char.inventory],
+        "skills": [
+            {"name": s.name, "is_passive": s.is_passive, "description": s.description or ""}
+            for s in char.skills
+        ],
+    }
+
+
+def serialize_ability(ability: Ability) -> dict:
+    """Способность → словарь (для категории «Способности»)."""
+    return {
+        "id": ability.id,
+        "name": ability.name,
+        "description": ability.description or "",
+        "trigger": ability.trigger,
+        "chance": ability.chance,
+        "once_per_combat": ability.once_per_combat,
+        "owner": ability.owner.name if ability.owner else None,
+        "owner_type": ability.owner.card_type if ability.owner else None,
+        "actions_summary": _actions_summary(ability),
+    }
