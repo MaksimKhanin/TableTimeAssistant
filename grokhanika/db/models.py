@@ -407,12 +407,20 @@ class LoreEntry(Card):
     сериализацию и семантический поиск. Текст факта — в ``description``. ``category``
     группирует записи (локации, фракции, история, кастом) и используется в RAG, чтобы
     ИИ-ГМ опирался на существующий лор, а не выдумывал мир.
+
+    ``lore_id`` — исходный идентификатор из базы фактов (H-001, R-013, ...).
+    ``when_to_apply`` — подсказка ГМу: в каких сценах применять этот факт.
+    ``notes`` — нюансы: распространённые ошибки, важные уточнения.
+    Все три поля включаются в текст для эмбеддинга — расширяют семантику поиска.
     """
 
     __tablename__ = "lore_entries"
 
     id: Mapped[int] = mapped_column(ForeignKey("cards.id"), primary_key=True)
     category: Mapped[str] = mapped_column(String(24), default="custom")
+    lore_id: Mapped[Optional[str]] = mapped_column(String(8), default=None)
+    when_to_apply: Mapped[str] = mapped_column(String, default="")
+    notes: Mapped[str] = mapped_column(String, default="")
 
     __mapper_args__ = {"polymorphic_identity": CardType.LORE.value}
 
