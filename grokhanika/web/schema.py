@@ -325,6 +325,28 @@ def _build_forms() -> dict[str, FormSpec]:
         ],
     )
 
+    forms[CardType.LORE.value] = FormSpec(
+        card_type=CardType.LORE.value,
+        label="Лор",
+        icon="📚",
+        note="Факт о мире, который ИИ-ГМ использует в повествовании через RAG-поиск. "
+             "Чем точнее описание — тем лучше ИИ находит нужный контекст.",
+        fields=[
+            _name_field(),
+            _description_field(),
+            FieldSpec("category", "Категория", "choice",
+                      "Тип факта для фильтрации в лор-базе.",
+                      default="custom",
+                      choices=[
+                          {"value": "location", "label": "Локация"},
+                          {"value": "faction", "label": "Фракция"},
+                          {"value": "history", "label": "История"},
+                          {"value": "custom", "label": "Прочее"},
+                      ]),
+            _image_field(),
+        ],
+    )
+
     forms[CardType.SKILL.value] = FormSpec(
         card_type=CardType.SKILL.value,
         label="Навык",
@@ -468,6 +490,27 @@ CATEGORIES: list[Category] = [
             {"value": "chance", "label": "По шансу"},
         ],
         creatable=[],
+    ),
+    Category(
+        key="lore",
+        label="Лор",
+        icon="📚",
+        card_types=[CardType.LORE.value],
+        filters=[
+            {"value": "all", "label": "Все"},
+            {"value": "location", "label": "Локации",
+             "card_types": [CardType.LORE.value]},
+            {"value": "faction", "label": "Фракции",
+             "card_types": [CardType.LORE.value]},
+            {"value": "history", "label": "История",
+             "card_types": [CardType.LORE.value]},
+            {"value": "custom", "label": "Прочее",
+             "card_types": [CardType.LORE.value]},
+        ],
+        sorts=[
+            {"value": "name", "label": "По имени"},
+        ],
+        creatable=[CardType.LORE.value],
     ),
 ]
 

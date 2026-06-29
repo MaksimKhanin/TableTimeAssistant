@@ -1176,6 +1176,68 @@ main { padding: 28px 24px 64px; max-width: 1280px; margin: 0 auto; }
   border-color: var(--accent) !important;
 }
 
+/* ── Панель группы внутри приключения ── */
+.adv-party-panel {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: min(420px, 100vw);
+  background: var(--panel); border-left: 1px solid var(--line);
+  box-shadow: -4px 0 24px rgba(0,0,0,.5);
+  z-index: 50; display: flex; flex-direction: column;
+  overflow: hidden;
+  animation: slideInRight .2s ease-out;
+}
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+.adv-party-panel.hidden { display: none; }
+.adv-party-panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px; border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.adv-party-panel-head h3 { margin: 0; font-size: 16px; }
+.adv-party-panel .party-grid {
+  overflow-y: auto; flex: 1; padding: 12px;
+  grid-template-columns: 1fr;
+}
+.adv-party-btn {
+  padding: 6px 12px; font-size: 13px; margin-right: auto;
+}
+
+/* ── Панели управления персонажем в форме редактирования ── */
+#char-mgmt-panels { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 14px; }
+.char-mgmt-section {
+  margin-bottom: 20px;
+  background: var(--panel); border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.char-mgmt-title {
+  font-weight: 600; font-size: 14px; margin-bottom: 10px;
+  color: var(--accent);
+}
+.char-mgmt-list {
+  display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px;
+  max-height: 180px; overflow-y: auto;
+}
+.char-mgmt-row {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--panel-2); border-radius: 8px; padding: 6px 10px;
+  font-size: 13px;
+}
+.char-mgmt-row .btn-danger.char-mgmt-rm {
+  margin-left: auto; padding: 3px 8px; font-size: 12px; border-radius: 6px;
+}
+.char-mgmt-add-row { display: flex; gap: 8px; align-items: center; }
+.char-mgmt-add-row select { flex: 1; }
+.char-equip-row { display: flex; flex-direction: column; gap: 8px; }
+.char-equip-slot {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  background: var(--panel-2); border-radius: 8px; padding: 8px 10px; font-size: 13px;
+}
+.char-equip-label { color: var(--muted); white-space: nowrap; }
+.char-equip-btn { padding: 4px 10px; font-size: 12px; }
+
 @media (max-width: 900px) {
   .party-grid { grid-template-columns: 1fr; }
   .llm-settings-grid { grid-template-columns: 1fr; }
@@ -1184,20 +1246,15 @@ main { padding: 28px 24px 64px; max-width: 1280px; margin: 0 auto; }
 @media (max-width: 600px) {
   .pch-body { grid-template-columns: 1fr 1fr; }
   .pch-stats-col { grid-column: span 2; border-top: 1px solid var(--line); }
-  .party-head { flex-direction: column; align-items: flex-start; gap: 10px; }
-  .party-session-sel-wrap { width: 100%; }
   .modes { gap: 4px; }
   .mode-btn { padding: 7px 10px; font-size: 12px; }
   .admin-subtabs { gap: 4px; }
   .admin-sub-tab { padding: 7px 10px; font-size: 12px; }
-  /* Card grid на телефоне — одна колонка */
   .card-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
-  /* Game card арт чуть меньше */
   .card-art { font-size: 40px; }
-  /* Sim roster вертикально */
   .sim-setup { grid-template-columns: 1fr; }
-  /* Topbar на телефоне */
   .topbar { flex-direction: column; align-items: flex-start; gap: 8px; padding: 10px 14px; }
   .modes { flex-wrap: wrap; }
   main { padding: 16px 12px 48px; }
+  .adv-party-panel { width: 100vw; }
 }

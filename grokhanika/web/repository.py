@@ -53,6 +53,7 @@ _MODELS: dict[str, type[Card]] = {
     CardType.SCROLL.value: Scroll,
     CardType.INSTRUMENT.value: Instrument,
     CardType.SKILL.value: Skill,
+    CardType.LORE.value: LoreEntry,
 }
 
 # поля-ссылки на другую карточку: имя поля → ожидаемая модель цели
@@ -126,6 +127,9 @@ def list_category(
         cards = [c for c in cards if not (isinstance(c, Character) and c.is_player)]
     elif skill_passive_filter is not None:
         cards = [c for c in cards if isinstance(c, Skill) and c.is_passive == skill_passive_filter]
+    elif category_key == "lore" and filter_value and filter_value != "all":
+        from ..db.models import LoreEntry
+        cards = [c for c in cards if isinstance(c, LoreEntry) and c.category == filter_value]
 
     reverse = order == "desc"
     cards.sort(key=lambda c: _sort_key(c, sort), reverse=reverse)
@@ -224,6 +228,62 @@ def equip_character(session: Session, char_id: int, slot: str, card_id: Optional
 
     session.commit()
     session.refresh(char)
+    return serialize_character_for_party(char)
+
+
+def add_to_inventory(session: Session, char_id: int, item_id: int) -> Optional[dict]:
+    """Добавить предмет в инвентарь персонажа."""
+    char = session.get(Character, char_id)
+    if char is None:
+        raise CreateError({"__form__": "Персонаж не найден"})
+    item = session.get(Card, item_id)
+    if item is None:
+        raise CreateError({"item_id": "Предмет не найден"})
+    if item not in char.inventory:
+        char.inventory.append(item)
+        session.commit()
+        session.refresh(char)
+    return serialize_character_for_party(char)
+
+
+def remove_from_inventory(session: Session, char_id: int, item_id: int) -> Optional[dict]:
+    """Убрать предмет из инвентаря персонажа."""
+    char = session.get(Character, char_id)
+    if char is None:
+        return None
+    item = next((it for it in char.inventory if it.id == item_id), None)
+    if item:
+        char.inventory.remove(item)
+        session.commit()
+        session.refresh(char)
+    return serialize_character_for_party(char)
+
+
+def add_skill_to_character(session: Session, char_id: int, skill_id: int) -> Optional[dict]:
+    """Добавить навык персонажу."""
+    char = session.get(Character, char_id)
+    if char is None:
+        raise CreateError({"__form__": "Персонаж не найден"})
+    skill = session.get(Skill, skill_id)
+    if skill is None:
+        raise CreateError({"skill_id": "Навык не найден"})
+    if skill not in char.skills:
+        char.skills.append(skill)
+        session.commit()
+        session.refresh(char)
+    return serialize_character_for_party(char)
+
+
+def remove_skill_from_character(session: Session, char_id: int, skill_id: int) -> Optional[dict]:
+    """Убрать навык у персонажа."""
+    char = session.get(Character, char_id)
+    if char is None:
+        return None
+    skill = next((s for s in char.skills if s.id == skill_id), None)
+    if skill:
+        char.skills.remove(skill)
+        session.commit()
+        session.refresh(char)
     return serialize_character_for_party(char)
 
 

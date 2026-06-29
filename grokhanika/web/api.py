@@ -11,6 +11,8 @@ from ..enums import CardType
 from . import repository, schema
 from .serialize import serialize_card
 from .simulation import run_simulation, start_interactive, submit_action
+from sqlalchemy import select
+from ..db.models import Card, Skill as SkillModel, Weapon, Armor, Item, SpellBook, Scroll, Instrument
 
 api = Blueprint("api", __name__, url_prefix="/api")
 
@@ -130,6 +132,81 @@ def equip_character(char_id: int):
     except repository.CreateError as exc:
         return jsonify({"errors": exc.errors}), 400
     return jsonify(result)
+
+
+@api.post("/characters/<int:char_id>/inventory")
+def add_inventory_item(char_id: int):
+    """Добавить предмет в инвентарь персонажа. Тело: {"item_id": int}"""
+    body = request.get_json(silent=True) or {}
+    item_id = body.get("item_id")
+    if not item_id:
+        return jsonify({"error": "item_id обязателен"}), 400
+    try:
+        result = repository.add_to_inventory(_session(), char_id, int(item_id))
+    except repository.CreateError as exc:
+        return jsonify({"errors": exc.errors}), 400
+    if result is None:
+        return jsonify({"error": "Персонаж не найден"}), 404
+    return jsonify(result)
+
+
+@api.delete("/characters/<int:char_id>/inventory/<int:item_id>")
+def remove_inventory_item(char_id: int, item_id: int):
+    """Убрать предмет из инвентаря персонажа."""
+    result = repository.remove_from_inventory(_session(), char_id, item_id)
+    if result is None:
+        return jsonify({"error": "Персонаж не найден"}), 404
+    return jsonify(result)
+
+
+@api.post("/characters/<int:char_id>/skills")
+def add_character_skill(char_id: int):
+    """Добавить навык персонажу. Тело: {"skill_id": int}"""
+    body = request.get_json(silent=True) or {}
+    skill_id = body.get("skill_id")
+    if not skill_id:
+        return jsonify({"error": "skill_id обязателен"}), 400
+    try:
+        result = repository.add_skill_to_character(_session(), char_id, int(skill_id))
+    except repository.CreateError as exc:
+        return jsonify({"errors": exc.errors}), 400
+    if result is None:
+        return jsonify({"error": "Персонаж не найден"}), 404
+    return jsonify(result)
+
+
+@api.delete("/characters/<int:char_id>/skills/<int:skill_id>")
+def remove_character_skill(char_id: int, skill_id: int):
+    """Убрать навык у персонажа."""
+    result = repository.remove_skill_from_character(_session(), char_id, skill_id)
+    if result is None:
+        return jsonify({"error": "Персонаж не найден"}), 404
+    return jsonify(result)
+
+
+@api.get("/items-catalog")
+def items_catalog():
+    """Все предметы, которые можно добавить в инвентарь персонажа."""
+    session = _session()
+    allowed_types = ("weapon", "armor", "item", "spellbook", "scroll", "instrument")
+    from sqlalchemy import select
+    from ..db.models import Card as CardModel
+    cards = session.execute(
+        select(CardModel).where(CardModel.card_type.in_(allowed_types)).order_by(CardModel.name)
+    ).scalars().all()
+    return jsonify([{"id": c.id, "name": c.name, "card_type": c.card_type} for c in cards])
+
+
+@api.get("/skills-catalog")
+def skills_catalog():
+    """Все навыки в системе."""
+    session = _session()
+    from sqlalchemy import select
+    from ..db.models import Card as CardModel
+    skills = session.execute(
+        select(CardModel).where(CardModel.card_type == "skill").order_by(CardModel.name)
+    ).scalars().all()
+    return jsonify([{"id": s.id, "name": s.name} for s in skills])
 
 
 @api.get("/equipment")
