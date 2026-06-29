@@ -76,38 +76,38 @@ def seed_all(session) -> dict:
 
     # ───────── оружие (§14) ─────────
     cat["dagger"] = Weapon(
-        name="Кинжал", description="Лёгкий клинок для скрытного удара — прост в обращении и смертоносен вблизи.",
+        name="Кинжал", description="Лёгкий клинок — самое распространённое оружие в гетто Нижних Граней и подворотнях Аники. Незаметен под плащом, смертоносен вблизи.",
         damage_dice="1d6", price=5,
     )
     cat["short_sword"] = Weapon(
-        name="Короткий меч", description="Надёжный клинок на все случаи. Чуть тяжелее кинжала, немного сковывает реакцию.",
+        name="Короткий меч", description="Штатный клинок стражников среднего ранга и армейских пехотинцев. Надёжен, но немного сковывает реакцию.",
         damage_dice="1d8", str_requirement=5, price=10,
         effects=[_stat_eff(EffectTarget.DEXTERITY, -1, SourceType.WEAPON, ActivationSource.EQUIPPED_WEAPON, "Короткий меч: DEX -1")],
     )
     cat["greataxe"] = Weapon(
-        name="Двуручный топор", description="Огромный двуручный топор, сносящий врага с ног. Требует богатырской силы.",
+        name="Двуручный топор", description="Топор орков-рабочих, переделанный в боевое оружие. Требует богатырской силы — Гро с ним управляются лучше, чем люди.",
         damage_dice="2d8", str_requirement=8, price=15,
         effects=[_stat_eff(EffectTarget.DEXTERITY, -3, SourceType.WEAPON, ActivationSource.EQUIPPED_WEAPON, "Двуручный топор: DEX -3")],
     )
     cat["staff"] = Weapon(
-        name="Посох", description="Деревянный шест. Не страшнее обычного кулака, но маги используют его для концентрации.",
+        name="Посох", description="Деревянный шест. В центральных Гранях — оружие неудачника. В руках шамана с севера или мага из Тенелесья — орудие концентрации силы.",
         damage_dice="1d4", price=5,
         effects=[_stat_eff(EffectTarget.WISDOM, 2, SourceType.WEAPON, ActivationSource.EQUIPPED_WEAPON, "Посох: WIS +2")],
     )
     cat["bow"] = Weapon(
-        name="Лук", description="Дальнобойное оружие охотника: точный выстрел издалека требует развитой ловкости.",
+        name="Лук", description="Традиционное оружие следопытов Тенелесья и охотников Вьюжных Пределов. В промышленной Грани уступил место арбалету, но в лесу ему нет равных.",
         damage_dice="1d8", dex_requirement=7, price=8, is_ranged=True,
         effects=[_stat_eff(EffectTarget.DEXTERITY, 2, SourceType.WEAPON, ActivationSource.EQUIPPED_WEAPON, "Лук: DEX +2")],
     )
     cat["crossbow"] = Weapon(
-        name="Арбалет", description="Мощный самострел, пробивающий лёгкие доспехи. Нужна сила, чтобы взводить тетиву.",
+        name="Арбалет", description="Стандартное оружие городской стражи Аники и гарнизонов Пепельного Дозора. Мощный, надёжный, не требует годов обучения — именно то, что нужно рядовому солдату.",
         damage_dice="1d8", str_requirement=7, price=10, is_ranged=True,
         effects=[_stat_eff(EffectTarget.DEXTERITY, 2, SourceType.WEAPON, ActivationSource.EQUIPPED_WEAPON, "Арбалет: DEX +2")],
     )
     cat["homing_bow"] = Weapon(
         name="Лук с самонаводящимися стрелами", damage_dice="1d8", dex_requirement=7,
         price=12, is_ranged=True, is_unique=True,
-        description="Самонаводящиеся стрелы найдут любую цель. Игнорируют Бастион и бьют любую видимую цель.",
+        description="Артефакт из глубин Тенелесья: зачарованные стрелы сами находят цель. Игнорируют Бастион и бьют любую видимую цель. Лесные маги продают такие редко и неохотно.",
         effects=[
             _stat_eff(EffectTarget.DEXTERITY, 2, SourceType.WEAPON, ActivationSource.EQUIPPED_WEAPON,
                       "Лук с самонаведением: DEX +2"),
@@ -116,53 +116,58 @@ def seed_all(session) -> dict:
         ],
     )
     cat["spear"] = Weapon(
-        name="Копьё", description="Длинное древковое оружие — хороший баланс досягаемости и урона. Даёт рычаг при ударе.",
+        name="Копьё", description="Длинное древковое оружие — хороший баланс досягаемости и урона. Предпочитают северные кланы и ополченцы из резерваций Гро.",
         damage_dice="1d6", str_requirement=4, price=6,
         effects=[_stat_eff(EffectTarget.STRENGTH, 2, SourceType.WEAPON, ActivationSource.EQUIPPED_WEAPON, "Копьё: STR +2")],
     )
     cat["club"] = Weapon(
-        name="Дубина", description="Грубое ударное оружие из дерева — дёшево, просто и сердито.",
+        name="Дубина", description="Любимое оружие орков-рабочих в гетто. Дёшево, просто, сердито — и всегда под рукой в виде рукоятки от шахтного инструмента.",
         damage_dice="1d6", price=3,
         effects=[_stat_eff(EffectTarget.DEXTERITY, -1, SourceType.WEAPON, ActivationSource.EQUIPPED_WEAPON, "Дубина: DEX -1")],
     )
     cat["battle_axe"] = Weapon(
-        name="Боевой топор", description="Надёжный топор воина. Наносит серьёзные повреждения, но требует сноровки.",
+        name="Боевой топор", description="Переделка шахтёрского инструмента в боевое оружие — распространена среди бандитов и бойцов подполья. Наносит серьёзные повреждения.",
         damage_dice="1d10", str_requirement=7, price=7,
         effects=[_stat_eff(EffectTarget.DEXTERITY, -2, SourceType.WEAPON, ActivationSource.EQUIPPED_WEAPON, "Боевой топор: DEX -2")],
     )
     cat["halberd"] = Weapon(
-        name="Бердыш", description="Тяжёлое двуручное оружие. Наносит разрушительный урон, но очень неудобен в использовании. Используется стражами Аники наряду с огнестрельным оружием.",
+        name="Бердыш", description="Тяжёлое церемониальное оружие элитных частей стражи Аники — им вооружены ворота дворца и штаб-квартиры Совета. Разрушительный урон ценой чудовищной неповоротливости.",
         damage_dice="2d10", str_requirement=9, price=14,
         effects=[_stat_eff(EffectTarget.DEXTERITY, -4, SourceType.WEAPON, ActivationSource.EQUIPPED_WEAPON, "Бердыш: DEX -4")],
+    )
+    cat["steam_pistol"] = Weapon(
+        name="Стим-пистолет", description="Контрабандное огнестрельное оружие на паровых зарядах. Стреляет разрывными капсулами с оглушительным треском. Незаконно на всей территории империи — на чёрном рынке Аники стоит как недельный заработок заводского мастера. Засветиться с ним — прямая дорога в тюрьму.",
+        damage_dice="2d6", str_requirement=5, price=25, is_ranged=True, is_unique=True,
+        effects=[_stat_eff(EffectTarget.DEXTERITY, 1, SourceType.WEAPON, ActivationSource.EQUIPPED_WEAPON, "Стим-пистолет: DEX +1")],
     )
 
     # ───────── броня (§14) ─────────
     cat["leather"] = Armor(
-        name="Кожаная броня", description="Дублёная кожа не скует движений, но от серьёзных ударов не спасёт.",
+        name="Кожаная броня", description="Дублёная кожа — стандартная защита бандитов, торговцев и путников на дорогах империи. Не стесняет движений, но от серьёзного удара не спасёт.",
         phys_def_bonus=1, price=8,
     )
     cat["chainmail"] = Armor(
-        name="Кольчуга", description="Сотни стальных колец защищают от клинков, но сковывают ловкость воина.",
+        name="Кольчуга", description="Армейская кольчуга — стандарт пехоты Грохании. Сотни стальных колец защищают от клинков, но сковывают ловкость.",
         phys_def_bonus=2, str_requirement=5, price=12,
         effects=[_stat_eff(EffectTarget.DEXTERITY, -1, SourceType.ARMOR, ActivationSource.EQUIPPED_ARMOR, "Кольчуга: DEX -1")],
     )
     cat["plate"] = Armor(
-        name="Латный доспех", description="Цельный стальной доспех — максимальная защита ценой резкого снижения манёвренности.",
+        name="Латный доспех", description="Парадная броня рыцарей и офицеров Грохании. Максимальная защита ценой резкого снижения манёвренности — в промышленных коридорах просто неудобен.",
         phys_def_bonus=3, str_requirement=7, price=15,
         effects=[_stat_eff(EffectTarget.DEXTERITY, -3, SourceType.ARMOR, ActivationSource.EQUIPPED_ARMOR, "Латный доспех: DEX -3")],
     )
     cat["mage_robes"] = Armor(
-        name="Одеяния мага", description="Зачарованные мантии, концентрирующие магическую силу и усиливающие мудрость чародея.",
+        name="Одеяния мага", description="Зачарованные мантии северных или лесных магов. В центральных Гранях их ношение вызывает подозрение — магия здесь считается «варварством». Концентрируют магическую силу носителя.",
         phys_def_bonus=0, price=8,
         effects=[_stat_eff(EffectTarget.WISDOM, 2, SourceType.ARMOR, ActivationSource.EQUIPPED_ARMOR, "Одеяния мага: WIS +2")],
     )
     cat["enchanted_robes"] = Armor(
-        name="Зачарованные одеяния", description="Одеяния высшего мага — тонкая ткань, пропитанная волшебством.",
+        name="Зачарованные одеяния", description="Одеяния высшего мага Тенелесья — тонкая ткань, насыщенная лесной магией из первородных источников. В Грани их не найдёшь в открытой продаже.",
         phys_def_bonus=0, price=15,
         effects=[_stat_eff(EffectTarget.WISDOM, 3, SourceType.ARMOR, ActivationSource.EQUIPPED_ARMOR, "Зачарованные одеяния: WIS +3")],
     )
     cat["berserker_armor"] = Armor(
-        name="Доспех берсерка", description="Броня ярости в металле — даёт огромную силу и защиту ценой манёвренности.",
+        name="Доспех берсерка", description="Боевая броня кланов Вьюжных Пределов. Северяне верят, что металл, закалённый в снегу и ярости, даёт носителю силу — и они правы.",
         phys_def_bonus=2, str_requirement=6, price=15,
         effects=[
             _stat_eff(EffectTarget.STRENGTH, 3, SourceType.ARMOR, ActivationSource.EQUIPPED_ARMOR, "Доспех берсерка: STR +3"),
@@ -170,9 +175,13 @@ def seed_all(session) -> dict:
         ],
     )
     cat["scout_armor"] = Armor(
-        name="Лёгкий доспех разведчика", description="Не стесняет движений и добавляет манёвренности — идеален для лазутчиков.",
+        name="Лёгкий доспех разведчика", description="Доспех следопытов Тенелесья: лёгкий, не стесняет движений, сшит из кожи с вставками из магического дерева. Идеален для лесной засады и быстрого отхода.",
         phys_def_bonus=1, price=12,
         effects=[_stat_eff(EffectTarget.DEXTERITY, 1, SourceType.ARMOR, ActivationSource.EQUIPPED_ARMOR, "Лёгкий доспех разведчика: DEX +1")],
+    )
+    cat["miner_suit"] = Armor(
+        name="Шахтёрский защитный костюм", description="Усиленный рабочий костюм из толстой кожи с металлическими накладками. Стандартная экипировка надзирателей на рудниках Граней. Защищает от взрывов, обвалов и удара заводского инструмента.",
+        phys_def_bonus=2, str_requirement=4, price=10,
     )
 
     # ───────── зелья (§14) ─────────
@@ -277,8 +286,13 @@ def seed_all(session) -> dict:
         price=10,
         effects=[_stat_eff(EffectTarget.CHARISMA, 2, SourceType.ITEM, ActivationSource.IN_INVENTORY, "Медальон харизмы: CHA +2")],
     )
+    cat["ash_mask"] = Item(
+        name="Маска дозорного", description="Кожаная маска с угольными фильтрами и огромными стеклянными очками — стандартное снаряжение Пепельного Дозора. Незаменима в Пустыне Смерти: защищает от пепла, токсичного воздуха и слабых кислотных осадков Граней. В гарнизоне Пеплограда без неё из казармы не выходят.",
+        price=5,
+        effects=[_attr_eff(EffectTarget.PHYS_DEFENSE, 1, SourceType.ITEM, ActivationSource.IN_INVENTORY, "Маска дозорного: +1 физ.защ.")],
+    )
     cat["wanderer_cloak"] = Item(
-        name="Плащ странника", description="Уникальный плащ используемый войнами Тенелесья — скрывает силуэт и немного защищает от ударов.",
+        name="Плащ странника", description="Уникальный плащ воинов Тенелесья — пропитан лесной смолой и зачарован против обнаружения. Скрывает силуэт и немного рассеивает удары.",
         price=18, is_unique=True,
         effects=[
             _stat_eff(EffectTarget.DEXTERITY, 1, SourceType.ITEM, ActivationSource.IN_INVENTORY, "Плащ странника: DEX +1"),
@@ -459,25 +473,33 @@ def seed_all(session) -> dict:
 
     # ───────── игровые персонажи (§15) ─────────
     cat["enzo"] = Character(
-        name="Энцо", description="Плут / Разбойник", is_player=True,
+        name="Энцо",
+        description="Грохонец (полукровка человека и орка) из Нижних Граней Аники. Вырос в гетто рядом с гоблинской мафией — сначала бегал курьером, потом научился вскрывать замки и чужие кошельки. Ни революционерам, ни Культу Бурь не верит: слишком насмотрелся на обе стороны. Работает на того, кто платит, — но есть вещи, которые не продаст даже за золото. Архетип: Плут / Разбойник.",
+        is_player=True,
         base_strength=3, base_dexterity=12, base_wisdom=5, base_charisma=8, money=0,
         equipped_weapon=cat["dagger"], equipped_armor=cat["leather"],
         inventory=[cat["small_heal"], cat["luck_talisman"], cat["inspiring_lute"]],
     )
     cat["andryusha"] = Character(
-        name="Андрюша", description="Воин", is_player=True,
+        name="Андрюша",
+        description="Человек, бывший стражник третьего ранга в гарнизоне Аники. Вырос в рабочем квартале Средних Граней, записался в стражу ради стабильного жалования. Ушёл, когда понял, что Культ Бурь внутри — не слухи, а приказы командиров. Теперь наёмник без политических предпочтений: к оркам и грохонцам относится спокойнее большинства, верит в честную работу и хорошую сталь. Архетип: Воин.",
+        is_player=True,
         base_strength=12, base_dexterity=5, base_wisdom=3, base_charisma=5, money=1,
         inventory=[cat["improdor_defender"]],
         equipped_weapon=cat["short_sword"], equipped_armor=cat["chainmail"],
     )
     cat["salli"] = Character(
-        name="Салли", description="Следопыт / Лучник", is_player=True,
+        name="Салли",
+        description="Полуэльф из приграничья Тенелесья. Мать — эльфийка из Сильванара, отец — заезжий торговец, которого она никогда не знала. В лесу её принимали как чужую, в городе смотрели на неё как на диковинку. Стала следопытом: в Тенелесье нужны навыки, а не происхождение. Знает лесные тропы лучше большинства чистокровных эльфов, но в имперских городах чувствует себя не в своей тарелке. Насторожённо относится к промышленной экспансии Граней в лес. Архетип: Следопыт / Лучник.",
+        is_player=True,
         base_strength=5, base_dexterity=10, base_wisdom=7, base_charisma=3, money=2,
         equipped_weapon=cat["homing_bow"], equipped_armor=cat["leather"],
         inventory=[cat["small_heal"]],
     )
     cat["arseldor"] = Character(
-        name="Арсельдор", description="Маг", is_player=True,
+        name="Арсельдор",
+        description="Человек из Средних Граней, самоучка-маг. Магические способности открылись после случайного контакта с артефактом из Пустыни Смерти — предположительно технологией Анхари, которую он принял за волшебство. В центральных Гранях магия официально считается «архаизмом» и «варварством», поэтому практикует втайне. Одержим историей Анхари и убеждён, что их утраченные технологии и магия Гро — одно и то же явление. Собирает запрещённые книги. Архетип: Маг.",
+        is_player=True,
         base_strength=3, base_dexterity=3, base_wisdom=14, base_charisma=5, money=0,
         equipped_weapon=cat["staff"], equipped_armor=cat["mage_robes"],
         inventory=[cat["vitality_amulet"]],
@@ -514,7 +536,7 @@ def seed_all(session) -> dict:
 
     # ── стражники и воины ──
     cat["city_guard"] = Creature(
-        name="Городской стражник", description="Стражник городских ворот — хорошо обучен и действует по уставу.",
+        name="Городской стражник", description="Рядовой стражи Аники — хорошо обучен, действует по уставу. Большинство — честные служаки. Среди них, однако, немало тайных членов Культа Бурь: распознать таких можно по серебряному значку под воротником.",
         is_sentient=True,
         hp=12, dexterity=5, phys_defense=10, mag_defense=3, mental_defense=7,
         phys_damage_dice="1d8", strength=6, charisma=4, wisdom=4,
@@ -555,7 +577,7 @@ def seed_all(session) -> dict:
         ],
     )
     cat["orc"] = Creature(
-        name="Орк", description="Свирепый орк — прирождённый воин, живёт войной и умирает с оружием в руках.",
+        name="Орк", description="Рабочий класс Грохании — кто-то после смены на шахте, кто-то из безработных гетто. Физически мощный, умеет злиться. Поодиночке не агрессивен, но легко поддаётся агитации через простые лозунги. С оружием в руках — серьёзная угроза.",
         is_sentient=True,
         hp=15, dexterity=5, phys_defense=10, mag_defense=3, mental_defense=7,
         phys_damage_dice="1d10", strength=8, charisma=3, wisdom=2,
@@ -638,22 +660,22 @@ def seed_all(session) -> dict:
 
     # ── прочие существа ──
     cat["ogre"] = Creature(
-        name="Огр", description="Огромный тупоголовый огр — дикая сила, почти нет интеллекта, смертоносен в ближнем бою.",
+        name="Огр", description="Де-факто раб на тяжелейших работах Грани — тягловая сила шахт и строек. Не понимает лозунгов и политики. Его держат в повиновении примитивной магией или обещанием еды. Опасен, если разозлить или обмануть.",
         is_sentient=True,
         hp=25, dexterity=3, phys_defense=12, mag_defense=3, mental_defense=5,
         phys_damage_dice="1d12", strength=12, charisma=1, wisdom=1,
     )
     cat["troll"] = Creature(
-        name="Тролль", description="Живучий тролль с грубой кожей. Говорят, мелкие раны затягиваются у него прямо в бою.",
+        name="Тролль", description="Рабочий в шахтах и на строительстве — физически мощный, с толстой кожей. Не понимает политики, но реагирует на несправедливость инстинктивно: может взорваться без предупреждения. Говорят, мелкие раны затягиваются у него прямо в бою.",
         is_sentient=True,
         hp=20, dexterity=4, phys_defense=11, mag_defense=4, mental_defense=6,
         phys_damage_dice="1d10", strength=10, charisma=1, wisdom=2,
     )
-    cat["kobold"] = Creature(
-        name="Кобольд", description="Юркий ящероподобный кобольд — слаб в одиночку, но хитёр и любит засады.",
+    cat["goblin"] = Creature(
+        name="Гоблин", description="Маленький зелёный обжитель гетто. Слаб телом, но хитёр умом. Работает курьером, стукачом, мелким контрабандистом — другого выхода в гетто нет. Организован в гоблинскую мафию: самый сплочённый народ среди Гро, выживание сделало их такими.",
         is_sentient=True,
-        hp=4, dexterity=7, phys_defense=7, mag_defense=2, mental_defense=5,
-        phys_damage_dice="1d4", strength=2, charisma=2, wisdom=3,
+        hp=3, dexterity=8, phys_defense=6, mag_defense=2, mental_defense=5,
+        phys_damage_dice="1d3", strength=1, charisma=3, wisdom=4,
     )
     cat["dark_priest"] = Creature(
         name="Жрец тьмы", description="Служитель тёмных богов, насылающий проклятия и лишающий врагов боевого духа.",
@@ -685,7 +707,7 @@ def seed_all(session) -> dict:
         phys_damage_dice="1d8", strength=5, charisma=3, wisdom=3,
     )
     cat["cultist"] = Creature(
-        name="Адепт культа", description="Фанатик тёмного культа — слаб телом, но опасен верой и чёрной магией.",
+        name="Адепт Культа Бурь", description="Рядовой член тайного Культа Бурь — стражник или солдат, потерявший кого-то от рук революционеров. Искренне верит в «чистоту крови» и «порядок». Серебряная молния под воротником — тайный знак. Слаб телом, но опасен фанатизмом и связями внутри стражи.",
         is_sentient=True,
         hp=8, dexterity=4, phys_defense=7, mag_defense=6, mental_defense=9,
         phys_damage_dice="1d4", strength=2, charisma=5, wisdom=7,
@@ -725,7 +747,7 @@ def seed_all(session) -> dict:
         ],
     )
     cat["shaman"] = Creature(
-        name="Шаман", description="Племенной шаман — связывает мир духов и живых, ослабляет врагов проклятием.",
+        name="Шаман", description="Духовный лидер кланов Вьюжных Пределов. Общается с духами предков, льда и ветра. В центральных Гранях их считают «дикарями», но в своих землях они — настоящая власть. Ослабляет врагов проклятием духов.",
         is_sentient=True,
         hp=12, dexterity=4, phys_defense=8, mag_defense=7, mental_defense=8,
         phys_damage_dice="1d4", strength=3, charisma=6, wisdom=9,
@@ -779,7 +801,7 @@ def seed_all(session) -> dict:
         phys_damage_dice="1d10", strength=10, charisma=2, wisdom=3,
     )
     cat["stone_golem"] = Creature(
-        name="Каменный голем", description="Магически оживлённый голем из камня — медленен, но практически неуязвим физически.",
+        name="Каменный голем", description="Магически оживлённый страж из камня — скорее всего артефакт времён Великого Синтеза или охрана древнего хранилища Анхари. Медленен, но практически неуязвим физически. На чёрном рынке за картой к такому хранилищу дают целое состояние.",
         is_sentient=False,
         hp=35, dexterity=2, phys_defense=16, mag_defense=6, mental_defense=20,
         phys_damage_dice="1d10", strength=12, charisma=1, wisdom=1,
@@ -820,9 +842,26 @@ def seed_all(session) -> dict:
     )
 
     # ── NPC ──
+    cat["revolutionary"] = Creature(
+        name="Революционер", description="Боевик революционного подполья — орк или грохонец с личным счётом к власти. Обучен азам тактики подпольной борьбы: засады, саботаж, баррикады. Опасен фанатизмом и готовностью умереть за лозунг «Гро — едины!».",
+        is_sentient=True,
+        hp=12, dexterity=6, phys_defense=9, mag_defense=2, mental_defense=9,
+        phys_damage_dice="1d8", strength=6, charisma=4, wisdom=3,
+    )
+    cat["ash_zombie"] = Creature(
+        name="Пепельный зомби", description="Нежить Пустыни Смерти — безликая гуманоидная фигура из пепла и костей. Порождена душами погибших Анхари. Из пустых глазниц сыплется пепел. Медленная, но неостановимая. Один — не проблема; толпа из сотен — катастрофа.",
+        is_sentient=False,
+        hp=10, dexterity=2, phys_defense=7, mag_defense=1, mental_defense=20,
+        phys_damage_dice="1d6", strength=5, charisma=1, wisdom=1,
+    )
+    cat["ash_ghoul"] = Creature(
+        name="Пепельный упырь", description="Нежить Пустыни Смерти — тощее, непропорционально высокое существо с длинными руками и ногами. Кожа из спечённого пепла и костей. Быстрое, охотится стаями, взбирается по отвесным стенам и бортам наземных кораблей.",
+        is_sentient=False,
+        hp=8, dexterity=9, phys_defense=8, mag_defense=2, mental_defense=20,
+        phys_damage_dice="1d8", strength=4, charisma=1, wisdom=2,
+    )
     cat["npc_innkeeper"] = Creature(
-        name="Трактирщик", description="Хозяин таверны: наливает эль, сдаёт комнаты и охотно "
-        "делится новостями и сплетнями за пару монет.",
+        name="Трактирщик", description="Хозяин таверны в Нижних или Средних Гранях: наливает мутное эль, сдаёт комнаты и охотно делится новостями и сплетнями за пару монет. Одним ухом слышит всё — одним глазом видит, чего лучше не замечать.",
         is_sentient=True, hp=8, dexterity=3, phys_defense=9, mag_defense=2, mental_defense=6,
         phys_damage_dice="1d4", strength=4, charisma=7, wisdom=5,
     )
