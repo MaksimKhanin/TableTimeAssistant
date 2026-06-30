@@ -25,11 +25,11 @@ def main() -> None:
                 f"физ.атака d20+{c.phys_attack_bonus}  маг.атака d20+{c.mag_attack_bonus}"
             )
 
-        print("\n=== Бой: партия против некроманта (автобой ИИ) ===")
+        print("\n=== Бой: партия против капитана стражи (автобой ИИ) ===")
         rng = random.Random(7)
         party = [Combatant(cat[k], "party") for k in ("andryusha", "salli", "arseldor")]
-        necromancer = Combatant(cat["necromancer"], "enemy")
-        combat = Combat(party + [necromancer], rng=rng, session=session)
+        captain = Combatant(cat["guard_captain"], "enemy")
+        combat = Combat(party + [captain], rng=rng, session=session)
 
         encounter = Encounter(
             combat,

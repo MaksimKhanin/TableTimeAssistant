@@ -17,10 +17,10 @@ def test_physical_hit_deals_damage(catalog):
     rng = ScriptedRandom(ints=[15])  # d20=15; кубики урона падают на минимум
     combat, (andryusha,), (goblin,) = make_combat(catalog, ["andryusha"], ["goblin"], rng)
     res = combat.physical_attack(andryusha, goblin)
-    # total = 15 + phys_atk(1) = 16 >= goblin.phys_defense(8)
+    # total = 15 + phys_atk(1) = 16 >= goblin.phys_defense(6)
     assert res.hit and not res.crit
     assert res.damage == 1 + 6  # 1d8 минимум + STR//2(6)
-    assert goblin.current_hp == 8 - 7
+    assert goblin.current_hp == 0  # hp=3, took 7 damage → killed
 
 
 def test_physical_crit_doubles_dice(catalog):
@@ -119,20 +119,20 @@ def test_flee_survive_and_die(catalog):
 
 
 def test_intimidate_requires_str_superiority(catalog):
-    # Арсельдор (STR 3) против гоблина (STR 3): 3 > 3 неверно -> недоступно
+    # Арсельдор (STR 3) против горожанина (STR 3): 3 > 3 неверно -> недоступно
     rng = ScriptedRandom()
-    combat, (arseldor,), _ = make_combat(catalog, ["arseldor"], ["goblin"], rng)
+    combat, (arseldor,), _ = make_combat(catalog, ["arseldor"], ["townsperson"], rng)
     res = combat.intimidate(arseldor, "enemy")
     assert not res.available
 
 
 def test_intimidate_success_routs_enemies(catalog):
-    # Андрюша (STR 12) > гоблин (STR 3); атака высокая, защита низкая -> успех -> побег врага
-    rng = ScriptedRandom(ints=[20, 1, 3])  # atk d20=20, def d20=1, затем побег гоблина d20=3
+    # Андрюша (STR 12) > гоблин (STR 1); атака высокая, защита низкая -> успех -> побег врага
+    rng = ScriptedRandom(ints=[20, 1, 1])  # atk d20=20, def d20=1, затем побег гоблина d20=1
     combat, (andryusha,), (goblin,) = make_combat(catalog, ["andryusha"], ["goblin"], rng)
     res = combat.intimidate(andryusha, "enemy")
     assert res.available and res.success
-    # гоблин: 3 + DEX_eff(4) = 7 < 10 -> гибнет при побеге
+    # гоблин: 1 + DEX_eff(8) = 9 < 10 -> гибнет при побеге
     assert goblin.dead
 
 
