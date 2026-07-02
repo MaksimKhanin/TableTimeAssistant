@@ -2,8 +2,12 @@
 
 Контракт «данные на вход — данные на выход», как и в боевом ``api.py``. Ответы ГМ
 отдаются потоком Server-Sent Events: кадр ``data: {json}\\n\\n`` с полем ``type``
-(``delta``/``intent``/``scene``/``done``/``error``). Стриминг обёрнут в
+(``delta``/``intent``/``scene``/``combat_ready``/``done``/``error``). Стриминг обёрнут в
 ``stream_with_context``, чтобы ``g.session`` жил всё время генерации.
+
+Сам бой (после ``combat_ready``) ведёт боевой API ``/api/battle/start`` и
+``/api/battle/<id>/action`` из ``web/api.py`` — здесь только запуск (подбор
+противников) и разрешение (LLM-рассказ об итоге, ``/adventure/<id>/battle/resolve``).
 """
 from __future__ import annotations
 
@@ -178,6 +182,26 @@ def adventure_message(adv_id: int):
     def work(session):
         adv = session.get(AdventureSession, adv_id)
         yield from advsession.play_turn(session, adv, character_id, text)
+
+    return _stream_response(work)
+
+
+@adventure_api.post("/adventure/<int:adv_id>/battle/resolve")
+def adventure_battle_resolve(adv_id: int):
+    """Подвести LLM-итог завершившегося боя и вернуться к повествованию."""
+    if _session().get(AdventureSession, adv_id) is None:
+        return jsonify({"error": "приключение не найдено"}), 404
+    body = request.get_json(silent=True) or {}
+    outcome = body.get("outcome") or {}
+    enemy_ids = body.get("enemy_ids") or []
+    try:
+        enemy_ids = [int(x) for x in enemy_ids]
+    except (TypeError, ValueError):
+        enemy_ids = []
+
+    def work(session):
+        adv = session.get(AdventureSession, adv_id)
+        yield from advsession.resolve_combat(session, adv, outcome, enemy_ids)
 
     return _stream_response(work)
 

@@ -7,7 +7,7 @@
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Iterable, Optional
 
 from sqlalchemy.orm import Session
 
@@ -30,6 +30,17 @@ def clear_npcs(session: Session, adv: AdventureSession) -> None:
     """Деактивировать всех NPC сцены (уход из локации/смена места)."""
     for pin in _active_pins(adv, KIND_NPC):
         pin.active = False
+    session.flush()
+
+
+def unpin_cards(session: Session, adv: AdventureSession, card_ids: Iterable[int]) -> None:
+    """Снять пины конкретных карточек (например, погибших в бою противников)."""
+    ids = set(card_ids)
+    if not ids:
+        return
+    for pin in adv.pins:
+        if pin.active and pin.card_id in ids:
+            pin.active = False
     session.flush()
 
 

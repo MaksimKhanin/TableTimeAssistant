@@ -141,6 +141,47 @@ def test_message_stream_pins_npc(client):
     assert "Горожанин" in npc_names
 
 
+def test_battle_resolve_stream_narrates_and_returns_scene(client):
+    c, factory, _holder = client
+    sid = c.post(
+        "/api/adventure/start",
+        json={"description": "город", "character_ids": _party_ids(factory), "goal": "дела"},
+    ).get_json()["session_id"]
+    c.get(f"/api/adventure/{sid}/intro")  # вводная
+
+    from grokhanika.db.models import AdventureSession, Creature
+
+    with factory() as s:
+        adv = s.get(AdventureSession, sid)
+        goblin = s.query(Creature).filter(Creature.name == "Гоблин").one()
+        from grokhanika.adventure import scene as adv_scene
+
+        adv_scene.pin_card(s, adv, goblin, adv_scene.KIND_NPC)
+        s.commit()
+        goblin_id = goblin.id
+
+    resp = c.post(
+        f"/api/adventure/{sid}/battle/resolve",
+        json={
+            "outcome": {
+                "winner": "party",
+                "winner_label": "Союзники",
+                "ended_by": "rout",
+                "survivors": {"party": ["Герой"], "enemy": []},
+                "log": ["Герой побеждает гоблина"],
+            },
+            "enemy_ids": [goblin_id],
+        },
+    )
+    assert resp.status_code == 200
+    frames = _frames(resp)
+    types = [f["type"] for f in frames]
+    assert "delta" in types and "done" in types
+    scene_frame = next(f for f in frames if f["type"] == "scene")
+    npc_names = [n["name"] for n in scene_frame["scene"]["npcs"]]
+    assert "Гоблин" not in npc_names
+
+
 def test_settings_get_put(client):
     c, _factory, _holder = client
     cfg = c.get("/api/adventure/settings").get_json()

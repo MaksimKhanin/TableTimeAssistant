@@ -823,6 +823,17 @@ main { padding: 28px 24px 64px; max-width: 1280px; margin: 0 auto; }
 .adv-intent-tag { font-size: 11px; color: var(--accent); background: var(--panel-2); border-radius: 999px; padding: 1px 8px; }
 .adv-typing::after { content: "▍"; color: var(--accent); animation: pulse-valid 1s infinite; }
 
+/* карточка «бой назревает» в чате приключения */
+.adv-combat-ready { align-self: center; max-width: 100%; width: 100%; text-align: center;
+  background: rgba(201, 74, 74, .1); border: 1px solid rgba(201, 74, 74, .4);
+  border-radius: 12px; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.adv-combat-ready .adv-msg-who { justify-content: center; }
+.adv-combat-start-btn { align-self: center; }
+
+/* встроенная боевая арена внутри приключения (та же .battle-arena, перенесена сюда) */
+.adv-battle-slot { grid-column: 1 / -1; }
+.adv-battle-slot .battle-arena { margin-top: 0; }
+
 .adv-input { display: grid; grid-template-columns: 160px 1fr auto; gap: 8px; align-items: end; }
 .adv-input select, .adv-input textarea {
   background: var(--panel); color: var(--text); border: 1px solid var(--line);

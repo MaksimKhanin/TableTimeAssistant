@@ -1,9 +1,11 @@
 """Оркестрация приключения поверх БД: старт, вводная ГМ и ход игрока.
 
 Состояние полностью в БД (никаких in-memory сессий) — приключение переживает
-перезапуск и его можно продолжить. ``stream_intro`` и ``play_turn`` —
-генераторы структурных событий (``delta``/``intent``/``scene``/``done``/``error``),
-которые API-слой превращает в SSE-кадры.
+перезапуск и его можно продолжить. ``stream_intro``, ``play_turn`` и
+``resolve_combat`` — генераторы структурных событий
+(``delta``/``intent``/``scene``/``combat_ready``/``done``/``error``), которые
+API-слой превращает в SSE-кадры. Сам бой ведёт ``web.simulation`` поверх
+``engine.combat`` — ``combat_bridge`` только подбирает противников из каталога.
 """
 from __future__ import annotations
 
@@ -12,15 +14,17 @@ from typing import Iterator, Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..db.models import AdventureMessage, AdventureSession, Character, LoreEntry
+from ..db.models import AdventureMessage, AdventureSession, Card, Character, LoreEntry
 from ..enums import CardType
-from . import config, memory, narrator, prompts, scene
+from . import combat_bridge, config, memory, narrator, prompts, scene
 from .intent import Intent, analyze_intent
 from .llm import LLMError, client_for
 
 # типы карточек, которые при заземлении становятся «предметами» сцены
 _ITEM_TYPES = {CardType.ITEM.value, CardType.WEAPON.value, CardType.ARMOR.value}
 _NPC_TYPES = {CardType.CREATURE.value, CardType.CHARACTER.value}
+# сторона противников в боевом движке (см. ``web/simulation.py`` ENEMY_SIDE)
+_ENEMY_SIDE = "enemy"
 
 
 # ───────────────────────── старт приключения ─────────────────────────
@@ -185,6 +189,13 @@ def play_turn(
     results = _search(session, queries, int(mem_cfg["retrieval_top_k"]))
     lore_facts = _apply_grounding(session, adv, results)
 
+    # 4b. подбор противников из каталога, если игрок инициирует бой
+    enemy_cards: list[Card] = []
+    if intent.combat_initiation:
+        enemy_cards = combat_bridge.select_enemies(session, adv, intent)
+        for card in enemy_cards:
+            scene.pin_card(session, adv, card, scene.KIND_NPC)
+
     # 5. эпизодическая память + окно
     window_msgs = memory.window(adv, int(mem_cfg["window_messages"]))
     window_ids = {m.id for m in window_msgs}
@@ -202,7 +213,7 @@ def play_turn(
         items=active["items"],
         lore_facts=lore_facts,
         episodic=episodic,
-        enrichment=prompts.enrichment_for(intent),
+        enrichment=prompts.enrichment_for(intent, combat_ready=bool(enemy_cards)),
     )
     messages = narrator.build_messages(adv, context, window_msgs)
 
@@ -217,6 +228,60 @@ def play_turn(
     session.commit()
 
     # 9. обновление сцены
+    yield {"type": "scene", "scene": scene.serialize_scene(adv)}
+    if enemy_cards:
+        yield {
+            "type": "combat_ready",
+            "enemy_ids": [c.id for c in enemy_cards],
+            "enemy_names": [c.name for c in enemy_cards],
+        }
+    yield {"type": "done", "message_id": gm_msg.id}
+
+
+# ───────────────────────── итог боя ─────────────────────────
+
+
+def resolve_combat(
+    session: Session,
+    adv: AdventureSession,
+    outcome: dict,
+    enemy_ids: Optional[list[int]] = None,
+) -> Iterator[dict]:
+    """Подвести итог завершившегося боя (поток событий), вернуться к повествованию.
+
+    Бой ведёт ``web.simulation`` поверх ``engine.combat`` — здесь только LLM-рассказ
+    об итоге и уборка сцены (снятие пинов с погибших противников).
+    """
+    mem_cfg = config.get_section(session, "memory")
+    embed_model = config.get_section(session, "embedder")["model"]
+    narrator_client = client_for(session, "narrator")
+
+    kickoff = prompts.combat_outcome_kickoff(outcome)
+    window_msgs = memory.window(adv, int(mem_cfg["window_messages"]))
+    active = scene.collect_active(adv)
+    context = prompts.build_context_block(
+        running_summary=adv.running_summary,
+        location=active["location"],
+        npcs=active["npcs"],
+        items=active["items"],
+        lore_facts=[],
+        episodic=[],
+        enrichment="",
+    )
+    messages = narrator.build_messages(adv, context, window_msgs, kickoff=kickoff)
+
+    gm_text = yield from _stream_and_collect(narrator_client, messages)
+    gm_msg = _save_message(session, adv, role="gm", content=gm_text)
+
+    if enemy_ids:
+        survivor_names = set((outcome.get("survivors") or {}).get(_ENEMY_SIDE, []))
+        cards = session.execute(select(Card).where(Card.id.in_(enemy_ids))).scalars().all()
+        defeated_ids = [c.id for c in cards if c.name not in survivor_names]
+        scene.unpin_cards(session, adv, defeated_ids)
+
+    memory.record_turn(session, adv, gm_msg, model_name=embed_model)
+    session.commit()
+
     yield {"type": "scene", "scene": scene.serialize_scene(adv)}
     yield {"type": "done", "message_id": gm_msg.id}
 

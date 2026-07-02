@@ -178,12 +178,93 @@ def test_skill_check_enriches_prompt(env):
     assert "проверки" in system_msg and "взлом" in system_msg
 
 
-def test_combat_initiation_enriches_prompt(env):
+def test_resolve_combat_narrates_and_clears_defeated(env):
+    sess, narrator, _holder = env
+    adv = advsession.start_adventure(
+        sess, description="старт", character_ids=_party_ids(sess), goal="идти"
+    )
+    from grokhanika.db.models import Creature
+
+    goblin = sess.query(Creature).filter(Creature.name == "Гоблин").one()
+    scene.pin_card(sess, adv, goblin, scene.KIND_NPC)
+    sess.commit()
+
+    outcome = {
+        "winner": "party",
+        "winner_label": "Союзники",
+        "ended_by": "rout",
+        "survivors": {"party": ["Герой"], "enemy": []},
+        "log": ["Герой бьёт Гоблина: 12 урона", "Гоблин повержен"],
+    }
+    events = list(advsession.resolve_combat(sess, adv, outcome, [goblin.id]))
+
+    assert any(e["type"] == "done" for e in events)
+    assert any(m.role == "gm" for m in adv.messages)
+
+    npc_names = [n["name"] for n in scene.serialize_scene(adv)["npcs"]]
+    assert "Гоблин" not in npc_names
+
+    kickoff = narrator.last_messages[-1]["content"]
+    assert "Союзники" in kickoff
+
+
+def test_combat_initiation_with_candidates_emits_combat_ready(env):
     sess, narrator, holder = env
     adv = advsession.start_adventure(
         sess, description="старт", character_ids=_party_ids(sess), goal="идти"
     )
-    holder["intent"] = {"intent_type": "combat", "combat_initiation": True, "search_queries": []}
-    list(advsession.play_turn(sess, adv, adv.party[0].id, "атакую гоблина"))
+    holder["intent"] = {
+        "intent_type": "combat",
+        "combat_initiation": True,
+        "enemy_query": "гоблин",
+        "enemy_count": 1,
+        "search_queries": [],
+    }
+    events = list(advsession.play_turn(sess, adv, adv.party[0].id, "атакую гоблина"))
     system_msg = narrator.last_messages[0]["content"]
     assert "боев" in system_msg.lower()
+
+    combat_events = [e for e in events if e["type"] == "combat_ready"]
+    assert combat_events, "ожидалось событие combat_ready"
+    assert "Гоблин" in combat_events[0]["enemy_names"]
+    assert combat_events[0]["enemy_ids"]
+
+    # найденный противник сразу закреплён в сцене
+    npc_names = [n["name"] for n in scene.serialize_scene(adv)["npcs"]]
+    assert "Гоблин" in npc_names
+
+
+def test_combat_initiation_without_candidates_reroutes_narrative(env):
+    sess, narrator, holder = env
+    adv = advsession.start_adventure(
+        sess, description="старт", character_ids=_party_ids(sess), goal="идти"
+    )
+    # ни enemy_query, ни search_queries — подбор противников не запускается вовсе
+    holder["intent"] = {"intent_type": "combat", "combat_initiation": True, "search_queries": []}
+    events = list(advsession.play_turn(sess, adv, adv.party[0].id, "атакую пустоту"))
+    system_msg = narrator.last_messages[0]["content"]
+    assert "стычка не состоялась" in system_msg.lower()
+    assert not any(e["type"] == "combat_ready" for e in events)
+
+
+def test_combat_initiation_without_candidates_suppresses_roll_note(env):
+    # regression: combat_initiation + requires_roll без найденного противника раньше
+    # склеивали противоречивые инструкции — "боя не было" и "сделай бросок атаки" сразу.
+    sess, narrator, holder = env
+    adv = advsession.start_adventure(
+        sess, description="старт", character_ids=_party_ids(sess), goal="идти"
+    )
+    holder["intent"] = {
+        "intent_type": "combat",
+        "combat_initiation": True,
+        "requires_roll": True,
+        "roll_type": "attack",
+        "search_queries": [],
+    }
+    list(advsession.play_turn(sess, adv, adv.party[0].id, "атакую стражника"))
+    system_msg = narrator.last_messages[0]["content"].lower()
+    assert "стычка не состоялась" in system_msg
+    assert "сделай бросок" not in system_msg
+    # (attack) — метка проверки из enrichment-заметки, а не из статичной персоны ГМ
+    # (та тоже упоминает "требует проверки", но без этой динамической метки)
+    assert "проверки (attack)" not in system_msg

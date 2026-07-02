@@ -26,6 +26,8 @@ class Intent:
     combat_initiation: bool = False
     leaves_location: bool = False
     search_queries: list[str] = field(default_factory=list)
+    enemy_query: str = ""
+    enemy_count: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -35,6 +37,8 @@ class Intent:
             "combat_initiation": self.combat_initiation,
             "leaves_location": self.leaves_location,
             "search_queries": list(self.search_queries),
+            "enemy_query": self.enemy_query,
+            "enemy_count": self.enemy_count,
         }
 
 
@@ -44,6 +48,13 @@ def _as_bool(value) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in ("true", "1", "да", "yes")
     return bool(value)
+
+
+def _as_int(value) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def parse_intent(raw: str) -> Intent:
@@ -80,6 +91,8 @@ def parse_intent(raw: str) -> Intent:
         combat_initiation=_as_bool(data.get("combat_initiation")),
         leaves_location=_as_bool(data.get("leaves_location")),
         search_queries=queries,
+        enemy_query=str(data.get("enemy_query", "")).strip(),
+        enemy_count=_as_int(data.get("enemy_count")),
     )
 
 

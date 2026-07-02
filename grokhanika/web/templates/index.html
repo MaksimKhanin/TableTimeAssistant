@@ -178,6 +178,7 @@
           <div class="llm-provider-row">
             <span class="field-label">Быстрый выбор провайдера:</span>
             <div class="llm-provider-chips" id="llm-provider-chips">
+              <button class="llm-chip" data-url="https://proxy.gen-api.ru/v1" data-model="qwen-3-6-plus" data-key-hint="gen-api ключ">GenAPI (Qwen 3.6 Plus)</button>
               <button class="llm-chip" data-url="https://api.openai.com/v1" data-model="gpt-4o" data-key-hint="sk-…">OpenAI</button>
               <button class="llm-chip" data-url="https://api.anthropic.com/v1" data-model="claude-opus-4-8" data-key-hint="anthropic key">Anthropic</button>
               <button class="llm-chip" data-url="https://api.groq.com/openai/v1" data-model="llama-3.3-70b-versatile" data-key-hint="gsk_…">Groq</button>
@@ -199,6 +200,24 @@
                   <input id="llm-narrator-api_key" type="password" placeholder="(пусто для локального)"></label>
                 <label class="field"><span class="field-label">Температура</span>
                   <input id="llm-narrator-temperature" type="number" step="0.05" min="0" max="2"></label>
+                <label class="field"><span class="field-label">top_p</span>
+                  <input id="llm-narrator-top_p" type="number" step="0.05" min="0" max="1"></label>
+                <label class="field"><span class="field-label">top_k</span>
+                  <input id="llm-narrator-top_k" type="number" step="1" min="0"></label>
+                <label class="field"><span class="field-label">max_tokens</span>
+                  <input id="llm-narrator-max_tokens" type="number" step="1" min="1"></label>
+                <label class="field"><span class="field-label">reasoning_effort</span>
+                  <select id="llm-narrator-reasoning_effort">
+                    <option value="none">none</option>
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                  </select></label>
+                <label class="field"><span class="field-label">response_format</span>
+                  <select id="llm-narrator-response_format">
+                    <option value="text">text</option>
+                    <option value="json_object">json_object</option>
+                  </select></label>
                 <div class="ai-status" id="llm-narrator-status"></div>
               </fieldset>
 
@@ -212,6 +231,24 @@
                   <input id="llm-system-api_key" type="password" placeholder="(пусто для локального)"></label>
                 <label class="field"><span class="field-label">Температура</span>
                   <input id="llm-system-temperature" type="number" step="0.05" min="0" max="2"></label>
+                <label class="field"><span class="field-label">top_p</span>
+                  <input id="llm-system-top_p" type="number" step="0.05" min="0" max="1"></label>
+                <label class="field"><span class="field-label">top_k</span>
+                  <input id="llm-system-top_k" type="number" step="1" min="0"></label>
+                <label class="field"><span class="field-label">max_tokens</span>
+                  <input id="llm-system-max_tokens" type="number" step="1" min="1"></label>
+                <label class="field"><span class="field-label">reasoning_effort</span>
+                  <select id="llm-system-reasoning_effort">
+                    <option value="none">none</option>
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                  </select></label>
+                <label class="field"><span class="field-label">response_format</span>
+                  <select id="llm-system-response_format">
+                    <option value="text">text</option>
+                    <option value="json_object">json_object</option>
+                  </select></label>
                 <div class="ai-status" id="llm-system-status"></div>
               </fieldset>
             </div>
@@ -309,6 +346,10 @@
             <button class="btn-primary" id="adv-send">Отправить</button>
           </div>
         </div>
+
+        <!-- Слот для встроенной боевой арены (переносим сюда #battle-arena при старте боя) -->
+        <div class="adv-battle-slot hidden" id="adv-battle-slot"></div>
+
         <aside class="adv-scene">
           <div class="adv-scene-head">
             <h3>🎬 Сцена</h3>

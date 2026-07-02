@@ -65,7 +65,11 @@ def intent_system_prompt() -> str:
         '  "combat_initiation": true|false,  // игрок начинает бой/атакует\n'
         '  "leaves_location": true|false,    // игрок покидает текущую локацию/перемещается\n'
         '  "search_queries": ["ключевые сущности/темы для поиска в базе: NPC, существа, предметы, '
-        'локации; 1-4 строки по-русски"]\n'
+        'локации; 1-4 строки по-русски"],\n'
+        '  "enemy_query": "если combat_initiation=true: кого искать в каталоге существ/противников '
+        'по контексту сцены (по-русски, кратко); иначе пустая строка",\n'
+        '  "enemy_count": число противников, подходящее по контексту (если combat_initiation=true; '
+        "иначе 0)\n"
         "}\n"
         "Верни только JSON."
     )
@@ -130,18 +134,75 @@ def build_context_block(
     return "\n\n".join(blocks)
 
 
-def enrichment_for(intent) -> str:
-    """Доп. инструкция ГМ по итогам интент-анализа (бросок/бой)."""
+def enrichment_for(intent, *, combat_ready: bool = True) -> str:
+    """Доп. инструкция ГМ по итогам интент-анализа (бросок/бой).
+
+    ``combat_ready`` — нашлись ли в каталоге подходящие противники для намерения
+    ``combat_initiation``. Если нет — сцену нельзя оставлять «подвешенной»: рассказчику
+    даётся не завязка боя, а сюжетное объяснение, почему стычка не состоялась.
+
+    Если бой не состоялся (``combat_initiation`` и не ``combat_ready``), инструкция про
+    бросок подавляется: ``requires_roll`` в этом случае почти всегда относится именно к
+    броску атаки несостоявшегося боя, а без реального противника обрабатывать его
+    некому — команда «сделай бросок» и «стычки не было» иначе противоречат друг другу.
+    """
     notes: list[str] = []
+    combat_deflected = False
     if getattr(intent, "combat_initiation", False):
-        notes.append(
-            "Назревает боевая ситуация. Опиши завязку боя кинематографично и подведи к началу "
-            "столкновения, не разрешая бой полностью."
-        )
-    if getattr(intent, "requires_roll", False):
+        if combat_ready:
+            notes.append(
+                "Назревает боевая ситуация. Опиши завязку боя кинематографично и подведи к началу "
+                "столкновения, не разрешая бой полностью."
+            )
+        else:
+            notes.append(
+                "Игрок пытается начать бой, но подходящего противника в этой сцене нет. Не отказывай "
+                "игроку впрямую и не оставляй сцену «подвешенной» — сюжетно объясни, почему стычка не "
+                "состоялась (враг сбежал, угроза оказалась ложной, цель ускользнула и т.п.), и веди "
+                "повествование дальше."
+            )
+            combat_deflected = True
+    if getattr(intent, "requires_roll", False) and not combat_deflected:
         label = (getattr(intent, "roll_type", "") or "проверка").strip()
         notes.append(
             f"Действие требует проверки ({label}). Обыграй НАЧАЛО броска в ролиплее: опиши попытку "
             "и предложи игроку сделать бросок, не определяя исход за него."
         )
     return " ".join(notes)
+
+
+# ───────────────────────── итог боя ─────────────────────────
+
+_ENDED_BY_RU = {
+    "rout": "разгром одной из сторон",
+    "negotiation": "переговоры/капитуляция",
+    "timeout": "бой затянулся и был прерван",
+    "draw": "ничья",
+}
+
+
+def combat_outcome_kickoff(outcome: dict) -> str:
+    """Реплика-затравка для ГМ: подвести итог только что закончившегося боя.
+
+    ``outcome`` — словарь в формате ответа боевого API (``winner_label``,
+    ``ended_by``, ``survivors``, ``log``): см. ``web/simulation.py``.
+    """
+    winner_label = outcome.get("winner_label")
+    ended_by = _ENDED_BY_RU.get(outcome.get("ended_by", ""), outcome.get("ended_by", ""))
+    survivors = outcome.get("survivors") or {}
+    survivor_lines = []
+    for side, names in survivors.items():
+        if names:
+            survivor_lines.append(f"{side}: {', '.join(names)}")
+    survivors_text = "; ".join(survivor_lines) if survivor_lines else "выживших не осталось"
+    log_tail = "\n".join(outcome.get("log") or [])
+
+    return (
+        "Бой только что завершился. Подведи итог сцены как ГМ: кинематографично опиши развязку "
+        "и последствия схватки, опираясь на факты ниже. Не повторяй хронику дословно — перескажи "
+        "художественно, 1-3 абзаца, и предложи игрокам, что делать дальше.\n\n"
+        f"Итог: {'победа стороны «' + winner_label + '»' if winner_label else 'ничья'} "
+        f"({ended_by}).\n"
+        f"Кто уцелел: {survivors_text}.\n"
+        f"Хроника боя:\n{log_tail}"
+    )

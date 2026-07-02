@@ -7,7 +7,8 @@
 Секции конфига:
 
 * ``narrator`` — LLM-повествователь (ГМ): ``base_url``, ``model``, ``api_key``,
-  ``temperature``;
+  ``temperature``, ``top_p``, ``top_k``, ``max_tokens``, ``reasoning_effort``,
+  ``response_format``;
 * ``system``   — системная LLM (интент-анализ, компактинг) — те же поля;
 * ``embedder`` — модель sentence-transformers (``model``);
 * ``memory``   — пороги управления контекстом.
@@ -36,22 +37,35 @@ def _env(*names: str, default: str = "") -> str:
 
 
 def _defaults() -> dict[str, dict[str, Any]]:
-    """Встроенные дефолты с учётом переменных окружения."""
-    common_url = _env("GROKHANIKA_LLM_BASE_URL", default="http://localhost:11434/v1")
-    common_model = _env("GROKHANIKA_LLM_MODEL", default="qwen2.5:7b-instruct")
+    """Встроенные дефолты с учётом переменных окружения.
+
+    По умолчанию указан провайдер GenAPI (OpenAI-совместимый прокси
+    ``https://proxy.gen-api.ru/v1``, модель ``qwen-3-6-plus``) с параметрами
+    генерации из его документации.
+    """
+    common_url = _env("GROKHANIKA_LLM_BASE_URL", default="https://proxy.gen-api.ru/v1")
+    common_model = _env("GROKHANIKA_LLM_MODEL", default="qwen-3-6-plus")
     common_key = _env("GROKHANIKA_LLM_API_KEY", default="")
+    gen_params = {
+        "temperature": 1,
+        "top_p": 1,
+        "top_k": 0,
+        "max_tokens": 65536,
+        "reasoning_effort": "none",
+        "response_format": "text",
+    }
     return {
         "narrator": {
             "base_url": _env("GROKHANIKA_NARRATOR_BASE_URL", default=common_url),
             "model": _env("GROKHANIKA_NARRATOR_MODEL", default=common_model),
             "api_key": _env("GROKHANIKA_NARRATOR_API_KEY", default=common_key),
-            "temperature": 0.85,
+            **gen_params,
         },
         "system": {
             "base_url": _env("GROKHANIKA_SYSTEM_BASE_URL", default=common_url),
             "model": _env("GROKHANIKA_SYSTEM_MODEL", default=common_model),
             "api_key": _env("GROKHANIKA_SYSTEM_API_KEY", default=common_key),
-            "temperature": 0.2,
+            **gen_params,
         },
         "embedder": {
             "model": _env("GROKHANIKA_EMBED_MODEL", default="intfloat/multilingual-e5-base"),

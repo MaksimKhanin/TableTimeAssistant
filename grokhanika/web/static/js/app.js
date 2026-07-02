@@ -1641,11 +1641,17 @@ function showBattleOutcome(outcome) {
   const surv = Object.entries(outcome.survivors)
     .map(([s, names]) => `${s === "party" ? "Союзники" : "Враги"}: ${names.join(", ") || "—"}`).join(" · ");
   box.className = "outcome " + cls;
+  const btnHtml = advState.battleActive
+    ? `<button type="button" id="ba-return-adv" style="margin-top:14px" class="btn-primary">📖 Вернуться к повествованию</button>`
+    : `<button onclick="leaveBattle()" style="margin-top:14px" class="btn-secondary">← Назад к настройке</button>`;
   box.innerHTML = `<div>${txt}</div>
     <div class="survivors">за ${outcome.rounds} раунд(ов) · ${outcome.ended_by}</div>
     <div class="survivors">Выжившие — ${surv}</div>
-    <button onclick="leaveBattle()" style="margin-top:14px" class="btn-secondary">← Назад к настройке</button>`;
+    ${btnHtml}`;
   box.classList.remove("hidden");
+  if (advState.battleActive) {
+    $("#ba-return-adv").onclick = () => returnFromAdventureBattle(outcome);
+  }
 }
 
 function leaveBattle() {
@@ -2137,9 +2143,10 @@ showMode("home");
 
 // ═════════════════════════ LLM / RAG вкладка (Отладка/Админка) ═════════════════════════
 
+const LLM_GEN_FIELDS = ["temperature", "top_p", "top_k", "max_tokens", "reasoning_effort", "response_format"];
 const LLM_FIELDS = {
-  narrator: ["base_url", "model", "api_key", "temperature"],
-  system: ["base_url", "model", "api_key", "temperature"],
+  narrator: ["base_url", "model", "api_key", ...LLM_GEN_FIELDS],
+  system: ["base_url", "model", "api_key", ...LLM_GEN_FIELDS],
   embedder: ["model"],
   memory: ["window_messages", "compact_threshold", "episodic_top_k", "retrieval_top_k"],
 };
@@ -2226,6 +2233,7 @@ const advState = {
   ready: false, bound: false, presets: [], heroes: [],
   type: "custom", selectedIds: new Set(),
   session: null, streaming: false, loreEditId: null,
+  battleActive: false, battleEnemyIds: [],
 };
 
 const advEsc = (s) => String(s == null ? "" : s)
@@ -2302,6 +2310,8 @@ async function advStart() {
 function openPlay(session, messages) {
   // Закрываем панель группы при открытии новой сессии
   $("#adv-party-panel").classList.add("hidden");
+  // на случай если предыдущая сессия была прервана посреди боя
+  if (advState.battleActive) leaveAdventureBattle();
   advState.session = session;
   $("#adv-goalbar").innerHTML =
     `<span class="adv-goal-type">${advEsc(session.adventure_type)}</span>` +
@@ -2348,6 +2358,104 @@ function setIntentTag(bubble, intent) {
   bubble.div.querySelector(".adv-msg-who").appendChild(tag);
 }
 
+// ── бой из приключения (мост к боевой арене «Имитации боя») ──
+//
+// Бой не дублирует боевую арену: существующий #battle-arena физически
+// переносится в #adv-battle-slot на время боя и возвращается на место в
+// админской вкладке «Имитация боя» по завершении — вся ib-логика/обработчики
+// драг-н-дропа переиспользуются без изменений.
+
+let _battleArenaHome = null;
+
+function _captureBattleArenaHome() {
+  if (_battleArenaHome) return;
+  const el = $("#battle-arena");
+  _battleArenaHome = { parent: el.parentNode, next: el.nextSibling };
+}
+
+function renderCombatReadyCard(enemyIds, enemyNames) {
+  if (!enemyIds || !enemyIds.length) return;
+  const chat = $("#adv-chat");
+  const div = document.createElement("div");
+  div.className = "adv-msg adv-combat-ready";
+  const namesText = (enemyNames && enemyNames.length) ? enemyNames.join(", ") : "противники";
+  div.innerHTML =
+    `<div class="adv-msg-who">⚔️ Бой назревает</div>` +
+    `<div class="adv-msg-text">Против вас: ${advEsc(namesText)}</div>` +
+    `<button type="button" class="btn-primary adv-combat-start-btn">⚔️ Начать бой</button>`;
+  div.querySelector(".adv-combat-start-btn").onclick = () => {
+    div.remove();
+    startAdventureBattle(enemyIds);
+  };
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+async function startAdventureBattle(enemyIds) {
+  if (!advState.session) return;
+  const allies = (advState.session.party || []).map(c => c.id);
+  if (!allies.length || !enemyIds || !enemyIds.length) {
+    toast("Не удалось начать бой", true);
+    return;
+  }
+
+  const { ok, data } = await API.post("/api/battle/start", { allies, enemies: enemyIds });
+  if (!ok) { toast(data.error || "Ошибка запуска боя", true); return; }
+
+  ib.battleId = data.battle_id;
+  ib.combatants = data.combatants;
+  advState.battleActive = true;
+  advState.battleEnemyIds = enemyIds;
+
+  _captureBattleArenaHome();
+  $("#adv-battle-slot").appendChild($("#battle-arena"));
+  $("#adv-battle-slot").classList.remove("hidden");
+  $(".adv-main").classList.add("hidden");
+  $(".adv-scene").classList.add("hidden");
+
+  $("#ba-log").innerHTML = "";
+  $("#ba-verbose-log").textContent = "";
+  $("#ba-outcome").classList.add("hidden");
+  $("#battle-arena").classList.remove("hidden");
+  $("#battle-arena").scrollIntoView({ behavior: "smooth" });
+  initVerboseToggle();
+
+  renderBattleArena(true);
+  applyBattleEvents(data.events);
+
+  if (data.status === "waiting") {
+    ib.actor = data.actor;
+    ib.status = "waiting";
+    renderBattleArena();
+    const actorC = ib.combatants.find(c => c.uid === data.actor.uid);
+    if (actorC) showTurnBanner(actorC.name, actorC.side).then(() => highlightActorTurn(data.actor));
+    else highlightActorTurn(data.actor);
+  } else if (data.status === "over") {
+    ib.status = "over";
+    showBattleOutcome(data.outcome);
+  }
+}
+
+function leaveAdventureBattle() {
+  $("#battle-arena").classList.add("hidden");
+  if (_battleArenaHome) {
+    _battleArenaHome.parent.insertBefore($("#battle-arena"), _battleArenaHome.next);
+  }
+  $("#adv-battle-slot").classList.add("hidden");
+  $(".adv-main").classList.remove("hidden");
+  $(".adv-scene").classList.remove("hidden");
+  Object.assign(ib, { battleId: null, combatants: [], actor: null, status: null, dragging: null, dragGhost: null });
+  advState.battleActive = false;
+  advState.battleEnemyIds = [];
+}
+
+async function returnFromAdventureBattle(outcome) {
+  const enemyIds = advState.battleEnemyIds || [];
+  leaveAdventureBattle();
+  await streamGM(`/api/adventure/${advState.session.id}/battle/resolve`,
+    { method: "POST", body: { outcome, enemy_ids: enemyIds } });
+}
+
 async function streamGM(url, opts) {
   if (advState.streaming) return;
   advState.streaming = true;
@@ -2368,6 +2476,8 @@ async function streamGM(url, opts) {
         setIntentTag(bubble, ev.intent);
       } else if (ev.type === "scene") {
         renderScene(ev.scene);
+      } else if (ev.type === "combat_ready") {
+        renderCombatReadyCard(ev.enemy_ids, ev.enemy_names);
       } else if (ev.type === "error") {
         toast("ГМ: " + ev.error, true);
         bubble.textEl.textContent += "\n[" + ev.error + "]";

@@ -35,12 +35,22 @@ class LLMClient:
         *,
         api_key: str = "",
         temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        top_k: Optional[int] = None,
+        max_tokens: Optional[int] = None,
+        reasoning_effort: Optional[str] = None,
+        response_format: Optional[str] = None,
         timeout: float = 180.0,
     ) -> None:
         self.base_url = (base_url or "").rstrip("/")
         self.model = model
         self.api_key = api_key or ""
         self.temperature = temperature
+        self.top_p = top_p
+        self.top_k = top_k
+        self.max_tokens = max_tokens
+        self.reasoning_effort = reasoning_effort
+        self.response_format = response_format
         self.timeout = timeout
 
     # ── внутреннее ──
@@ -69,9 +79,19 @@ class LLMClient:
         temp = temperature if temperature is not None else self.temperature
         if temp is not None:
             body["temperature"] = temp
+        if self.top_p is not None:
+            body["top_p"] = self.top_p
+        if self.top_k is not None:
+            body["top_k"] = self.top_k
+        if self.max_tokens is not None:
+            body["max_tokens"] = self.max_tokens
+        if self.reasoning_effort is not None:
+            body["reasoning_effort"] = self.reasoning_effort
         if json_mode:
             # OpenAI-совместимый JSON-режим; для надёжности дублируется инструкцией в промте
             body["response_format"] = {"type": "json_object"}
+        elif self.response_format:
+            body["response_format"] = {"type": self.response_format}
         return body
 
     # ── публичное API ──
@@ -166,4 +186,9 @@ def client_for(session: Session, role: str) -> LLMClient:
         model=cfg.get("model", ""),
         api_key=cfg.get("api_key", ""),
         temperature=cfg.get("temperature"),
+        top_p=cfg.get("top_p"),
+        top_k=cfg.get("top_k"),
+        max_tokens=cfg.get("max_tokens"),
+        reasoning_effort=cfg.get("reasoning_effort"),
+        response_format=cfg.get("response_format"),
     )
