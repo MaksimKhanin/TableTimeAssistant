@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from ..db.models import AdventureMessage, AdventureSession
 from .llm import LLMClient, LLMError
+from .prompts import fill_template, load_templates
 
 ROLE_LABELS = {"gm": "ГМ", "player": "Игрок", "system": "Система"}
 
@@ -139,15 +140,14 @@ def maybe_compact(
 
     transcript = "\n".join(f"{_label(m)}: {(m.content or '').strip()}" for m in to_summarize)
     prev = adv.running_summary.strip()
-    user = (
-        "Ниже — журнал кампании (если есть) и новые ходы приключения. Обнови сжатую сводку: что "
-        "произошло, ключевые решения партии, важные NPC/места/факты и статус главной цели. Пиши "
-        "по-русски, компактно, без диалогов дословно. Верни только обновлённую сводку.\n\n"
-        f"Текущая сводка:\n{prev or '(пусто)'}\n\n"
-        f"Новые ходы:\n{transcript}"
+    t = load_templates()
+    user = fill_template(
+        t["compaction_user_template"],
+        prev=prev or "(пусто)",
+        transcript=transcript,
     )
     messages = [
-        {"role": "system", "content": "Ты ведёшь краткий журнал кампании настольной RPG."},
+        {"role": "system", "content": t["compaction_system"]},
         {"role": "user", "content": user},
     ]
     try:

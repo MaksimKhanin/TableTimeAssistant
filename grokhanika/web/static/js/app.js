@@ -2368,7 +2368,8 @@ function renderPresets() {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "adv-preset" + ((advState.type === p.id || (i === 0 && advState.type === "custom" && p.id === "custom")) ? " active" : "");
-    b.innerHTML = `<b>${advEsc(p.label)}</b><span>${advEsc(p.description)}</span>`;
+    const icon = p.icon_url ? `<img class="adv-preset-icon" src="${advEsc(p.icon_url)}" alt="">` : "";
+    b.innerHTML = `${icon}<b>${advEsc(p.label)}</b><span>${advEsc(p.description)}</span>`;
     b.onclick = () => {
       advState.type = p.id;
       $$("#adv-presets .adv-preset").forEach(x => x.classList.remove("active"));
