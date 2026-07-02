@@ -4,19 +4,29 @@
 снимающая пошаговые события. ``InteractiveEncounter`` — дополнительный слой:
 делает ходы ИИ, пока не дойдёт до хода игрока, и возвращает состояние с
 доступными действиями для выбора через UI.
+
+Броски игрока (атака/урон/лечение) не выполняются молча: действие, требующее
+кубика, возвращает состояние ``"roll"`` с описанием броска (какой кубик, бонус,
+порог). UI показывает окно кубика; игрок вводит реальный бросок или жмёт
+автобросок (``value=None`` → бросает серверный ``rng``). Значения передаются в
+движок через ``Action.rolls``. Броски врагов и ИИ-союзников идут фоном, как раньше.
 """
 from __future__ import annotations
 
 import random
 import uuid as _uuid
+from dataclasses import dataclass
 from typing import Optional
 
 from sqlalchemy.orm import Session
 
 from ..db.models import Card, Character, Creature
+from ..dice import Dice, roll_d20
 from ..engine import Combat, Combatant, Encounter, SimpleAIController
 from ..engine.actions import Action, ActionKind
+from ..engine.combat import resolve_hit
 from ..enums import AbilityTrigger
+from ..rules.effects import roll_modifier
 
 ALLY_SIDE = "party"
 ENEMY_SIDE = "enemy"
@@ -82,6 +92,37 @@ class RecordingEncounter(Encounter):
 # ───────────────────────── интерактивный режим ─────────────────────────
 
 
+@dataclass
+class PendingRoll:
+    """Ожидаемый бросок игрока: что бросить и куда подставить результат."""
+
+    action: Action
+    actor_uid: int
+    stage: str                     # "attack" | "damage" | "heal"
+    dice: str                      # нотация, напр. "1d20" или "2d6" (на крите — удвоенная)
+    modifier: int                  # бонус, добавляемый к броску
+    threshold: Optional[int]       # порог успеха (для d20-атаки), None для урона/лечения
+    label: str                     # человекочитаемое «на что» бросаем
+    natural: Optional[int] = None  # сохранённый d20 атаки (для стадии урона)
+    crit: bool = False
+
+    def to_payload(self, actor_name: str) -> dict:
+        d = Dice.parse(self.dice)
+        return {
+            "stage": self.stage,
+            "dice": self.dice,
+            "count": d.count,
+            "sides": d.sides,
+            "min": d.minimum,
+            "max": d.maximum,
+            "modifier": self.modifier,
+            "threshold": self.threshold,
+            "label": self.label,
+            "actor": actor_name,
+            "crit": self.crit,
+        }
+
+
 class InteractiveEncounter(RecordingEncounter):
     """Энкаунтер с паузами на ходы игрока.
 
@@ -98,6 +139,7 @@ class InteractiveEncounter(RecordingEncounter):
         self._round_active: bool = False
         self._waiting_uid: Optional[int] = None
         self._last_sent: int = 0
+        self._pending_roll: Optional[PendingRoll] = None
 
     # ── публичный API ──
 
@@ -107,8 +149,33 @@ class InteractiveEncounter(RecordingEncounter):
         return self._advance(None)
 
     def submit(self, action: Action) -> dict:
-        """Принять действие игрока и продвинуть бой до следующего хода игрока."""
+        """Принять действие игрока и продвинуть бой до следующего хода игрока.
+
+        Если действие требует броска игрока (атака/заклинание/зелье) — не
+        выполнять его, а вернуть состояние ``"roll"`` с описанием первого броска;
+        само действие выполнится в :meth:`submit_roll` после ввода значений.
+        """
+        self._pending_roll = None  # новое действие отменяет забытый запрос броска
+        pending = self._roll_request_for(action)
+        if pending is not None:
+            self._pending_roll = pending
+            return self._build_result("roll")
         return self._advance(action)
+
+    def submit_roll(self, value: Optional[int]) -> dict:
+        """Принять значение ожидаемого броска (``None`` → автобросок серверным rng).
+
+        Возвращает либо следующий запрос броска (урон после попадания), либо
+        результат хода как обычный ``submit``. В ответе всегда есть ``roll_result``
+        с итогом только что сделанного броска — для показа в окне кубика.
+        """
+        pending = self._pending_roll
+        if pending is None:
+            raise ValueError("бросок не ожидается")
+
+        if pending.stage == "attack":
+            return self._resolve_attack_roll(pending, value)
+        return self._resolve_total_roll(pending, value)
 
     # ── внутренний цикл ──
 
@@ -167,6 +234,129 @@ class InteractiveEncounter(RecordingEncounter):
             ai_action = self._decide(actor)
             self._apply(ai_action, actor)
 
+    # ── запросы бросков игрока ──
+
+    def _roll_request_for(self, action: Optional[Action]) -> Optional[PendingRoll]:
+        """Описать первый бросок игрока для действия — или ``None``, если бросков нет.
+
+        Возвращает ``None`` и для заведомо невалидных действий (нет цели, цель под
+        Бастионом, нет зелья): пусть их как раньше отработает ``Encounter._apply``
+        с записью в лог, не гоняя игрока по окну кубика впустую.
+        """
+        if action is None or self._waiting_uid is None:
+            return None
+        combat = self.combat
+        actor = combat.get(self._waiting_uid)
+        if actor is None or not actor.can_act:
+            return None
+
+        if action.kind in (ActionKind.ATTACK_PHYSICAL, ActionKind.CAST_SPELL):
+            target = combat.get(action.target_uid) if action.target_uid is not None else None
+            if target is None or not target.in_combat or combat.bastion_blocks(actor, target):
+                return None
+            if action.kind is ActionKind.ATTACK_PHYSICAL:
+                bonus = actor.phys_attack_bonus + roll_modifier(actor.active_effects, attack=True)
+                return PendingRoll(
+                    action=action, actor_uid=actor.uid, stage="attack",
+                    dice="1d20", modifier=bonus, threshold=target.phys_defense,
+                    label=f"Атака по {target.name}",
+                )
+            carrier = next(
+                (s for s in actor.spell_carriers if s.card_id == action.carrier_card_id),
+                None,
+            )
+            if carrier is None:
+                return None
+            bonus = actor.mag_attack_bonus + roll_modifier(actor.active_effects, attack=True)
+            return PendingRoll(
+                action=action, actor_uid=actor.uid, stage="attack",
+                dice="1d20", modifier=bonus, threshold=carrier.spell_difficulty,
+                label=f"«{carrier.spell_name or carrier.name}» → {target.name}",
+            )
+
+        if action.kind is ActionKind.USE_POTION:
+            potion = next(
+                (it for it in actor.inventory
+                 if it.heal_dice and (action.item_name is None or it.name == action.item_name)),
+                None,
+            )
+            if potion is None:
+                return None
+            return PendingRoll(
+                action=action, actor_uid=actor.uid, stage="heal",
+                dice=potion.heal_dice, modifier=0, threshold=None,
+                label=f"Лечение «{potion.name}»",
+            )
+
+        return None
+
+    def _resolve_attack_roll(self, pending: PendingRoll, value: Optional[int]) -> dict:
+        """Стадия d20: определить попадание; при попадании запросить бросок урона."""
+        combat = self.combat
+        natural = roll_d20(combat.rng) if value is None else max(1, min(20, value))
+        total = natural + pending.modifier
+        hit, crit, fumble = resolve_hit(natural, total, pending.threshold or 0)
+        roll_result = {
+            "stage": "attack",
+            "value": natural,
+            "total": total,
+            "modifier": pending.modifier,
+            "threshold": pending.threshold,
+            "label": pending.label,
+            "outcome": "crit" if crit else "hit" if hit else "fumble" if fumble else "miss",
+        }
+
+        if not hit:
+            # промах: выполнить действие сразу (урон не понадобится)
+            self._pending_roll = None
+            pending.action.rolls = {"natural": natural}
+            result = self._advance(pending.action)
+            result["roll_result"] = roll_result
+            return result
+
+        # попадание: запросить урон (на крите — удвоенные кубики)
+        actor = combat.get(pending.actor_uid)
+        if pending.action.kind is ActionKind.ATTACK_PHYSICAL:
+            dice = Dice.parse(actor.phys_damage_dice)
+            dmg_modifier = actor.phys_damage_bonus
+        else:
+            carrier = next(
+                s for s in actor.spell_carriers if s.card_id == pending.action.carrier_card_id
+            )
+            dice = Dice.parse(carrier.spell_damage_dice)
+            dmg_modifier = 0
+        count = dice.count * 2 if crit else dice.count
+        self._pending_roll = PendingRoll(
+            action=pending.action, actor_uid=pending.actor_uid, stage="damage",
+            dice=f"{count}d{dice.sides}", modifier=dmg_modifier, threshold=None,
+            label=f"Урон — {pending.label}", natural=natural, crit=crit,
+        )
+        result = self._build_result("roll")
+        result["roll_result"] = roll_result
+        return result
+
+    def _resolve_total_roll(self, pending: PendingRoll, value: Optional[int]) -> dict:
+        """Стадия суммы кубиков (урон/лечение): выполнить действие с этим значением."""
+        dice = Dice.parse(pending.dice)
+        total = dice.roll(self.combat.rng) if value is None else max(dice.minimum, min(dice.maximum, value))
+        self._pending_roll = None
+        if pending.stage == "heal":
+            pending.action.rolls = {"heal_roll": total}
+        else:
+            # pending.dice уже удвоен на крите — движку передаём сырую сумму и сам d20
+            pending.action.rolls = {"natural": pending.natural, "damage_roll": total}
+        result = self._advance(pending.action)
+        result["roll_result"] = {
+            "stage": pending.stage,
+            "value": total,
+            "total": total + pending.modifier,
+            "modifier": pending.modifier,
+            "threshold": None,
+            "label": pending.label,
+            "outcome": pending.stage,  # "damage" | "heal"
+        }
+        return result
+
     # ── построение ответа ──
 
     def _build_result(self, status: str, actor: Optional[Combatant] = None) -> dict:
@@ -181,6 +371,12 @@ class InteractiveEncounter(RecordingEncounter):
 
         if status == "waiting" and actor is not None:
             result["actor"] = self._actor_options(actor)
+
+        if status == "roll" and self._pending_roll is not None:
+            pending_actor = self.combat.get(self._pending_roll.actor_uid)
+            result["roll"] = self._pending_roll.to_payload(
+                pending_actor.name if pending_actor else ""
+            )
 
         if status == "over":
             outcome = self.outcome()
@@ -320,6 +516,20 @@ def submit_action(battle_id: str, action_data: dict) -> dict:
 
     action = _parse_action(action_data)
     result = battle.encounter.submit(action)
+
+    if result.get("status") == "over":
+        _SESSIONS.pop(battle_id, None)
+
+    return result
+
+
+def submit_roll(battle_id: str, value: Optional[int]) -> dict:
+    """Принять значение броска игрока (``None`` → автобросок), продолжить бой."""
+    battle = _SESSIONS.get(battle_id)
+    if battle is None:
+        raise KeyError(battle_id)
+
+    result = battle.encounter.submit_roll(value)
 
     if result.get("status") == "over":
         _SESSIONS.pop(battle_id, None)

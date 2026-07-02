@@ -10,7 +10,7 @@ from flask import Blueprint, g, jsonify, request
 from ..enums import CardType
 from . import image_gen, repository, schema
 from .serialize import serialize_card
-from .simulation import run_simulation, start_interactive, submit_action
+from .simulation import run_simulation, start_interactive, submit_action, submit_roll
 from sqlalchemy import select
 from ..db.models import Card, Skill as SkillModel, Weapon, Armor, Item, SpellBook, Scroll, Instrument
 
@@ -309,4 +309,23 @@ def battle_action(battle_id: str):
         result = submit_action(battle_id, body)
     except KeyError:
         return jsonify({"error": "Сессия боя не найдена — возможно, бой уже завершён"}), 404
+    return jsonify(result)
+
+
+@api.post("/battle/<battle_id>/roll")
+def battle_roll(battle_id: str):
+    """Принять значение ожидаемого броска игрока.
+
+    Тело: {"value": int} — ручной ввод реального кубика; {"value": null} — автобросок.
+    Ответ: как у /action, плюс "roll_result" (итог броска) и, если нужен следующий
+    бросок (урон после попадания), статус "roll" с его описанием."""
+    body = request.get_json(silent=True) or {}
+    value = body.get("value")
+    value = int(value) if value not in (None, "") else None
+    try:
+        result = submit_roll(battle_id, value)
+    except KeyError:
+        return jsonify({"error": "Сессия боя не найдена — возможно, бой уже завершён"}), 404
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     return jsonify(result)

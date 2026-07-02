@@ -27,6 +27,25 @@ FLEE_THRESHOLD = 10
 MORALE_MODIFIER = -2
 
 
+def resolve_hit(natural: int, total: int, threshold: int) -> tuple[bool, bool, bool]:
+    """Единое правило попадания d20: (hit, crit, fumble).
+
+    Натуральная 20 — всегда попадание (крит), натуральная 1 — всегда промах.
+    """
+    crit = is_crit(natural)
+    fumble = is_fumble(natural)
+    hit = crit or (not fumble and total >= threshold)
+    return hit, crit, fumble
+
+
+def _clamped_roll(dice: Dice, provided: Optional[int], rng: random.Random, *, crit: bool = False) -> int:
+    """Бросок кубиков либо внешнее значение (ручной бросок игрока), зажатое в границы."""
+    if provided is None:
+        return dice.roll(rng, crit=crit)
+    factor = 2 if crit else 1
+    return max(dice.minimum * factor, min(dice.maximum * factor, provided))
+
+
 # ───────────────────────── результаты ─────────────────────────
 
 
@@ -169,14 +188,22 @@ class Combat:
 
     # ───────── физическая атака (§8) ─────────
 
-    def physical_attack(self, attacker: Combatant, defender: Combatant) -> AttackResult:
-        natural = roll_d20(self.rng)
+    def physical_attack(
+        self,
+        attacker: Combatant,
+        defender: Combatant,
+        *,
+        natural: Optional[int] = None,
+        damage_roll: Optional[int] = None,
+    ) -> AttackResult:
+        """Физическая атака. ``natural``/``damage_roll`` — заранее сделанные броски
+        игрока (ручной ввод через окно кубика); при ``None`` бросает ``self.rng``."""
+        if natural is None:
+            natural = roll_d20(self.rng)
         bonus = attacker.phys_attack_bonus + roll_modifier(attacker.active_effects, attack=True)
         total = natural + bonus
         threshold = defender.phys_defense
-        crit = is_crit(natural)
-        fumble = is_fumble(natural)
-        hit = crit or (not fumble and total >= threshold)
+        hit, crit, fumble = resolve_hit(natural, total, threshold)
 
         result = AttackResult(
             attacker=attacker.name,
@@ -191,7 +218,7 @@ class Combat:
         weapon_tag = f" [{attacker.weapon.name}]" if attacker.weapon else " [кулак]"
         if hit:
             dice = Dice.parse(attacker.phys_damage_dice)
-            result.damage = dice.roll(self.rng, crit=crit) + attacker.phys_damage_bonus
+            result.damage = _clamped_roll(dice, damage_roll, self.rng, crit=crit) + attacker.phys_damage_bonus
             defender.take_damage(result.damage)
             self.log.append(
                 f"{attacker.name}{weapon_tag} бьёт {defender.name}: "
@@ -218,13 +245,15 @@ class Combat:
         difficulty: int,
         debuff: Optional[RuntimeEffect] = None,
         spell_name: str = "",
+        natural: Optional[int] = None,
+        damage_roll: Optional[int] = None,
     ) -> SpellResult:
-        # шаг 1 — активация
-        natural = roll_d20(self.rng)
+        # шаг 1 — активация (``natural``/``damage_roll`` — внешние броски игрока)
+        if natural is None:
+            natural = roll_d20(self.rng)
         bonus = caster.mag_attack_bonus + roll_modifier(caster.active_effects, attack=True)
         activation_total = natural + bonus
-        crit = is_crit(natural)
-        activated = crit or (not is_fumble(natural) and activation_total >= difficulty)
+        activated, crit, _fumble = resolve_hit(natural, activation_total, difficulty)
 
         result = SpellResult(
             caster=caster.name,
@@ -251,7 +280,7 @@ class Combat:
         saved = save_total >= activation_total
         result.saved = saved
 
-        damage = Dice.parse(damage_dice).roll(self.rng, crit=crit)
+        damage = _clamped_roll(Dice.parse(damage_dice), damage_roll, self.rng, crit=crit)
         if saved:
             damage = math.ceil(damage / 2)  # спас успешен: половина, дебафф не вешается
         else:
@@ -307,7 +336,13 @@ class Combat:
         return damage
 
     def cast_from_carrier(
-        self, caster: Combatant, defender: Combatant, carrier_card_id: int
+        self,
+        caster: Combatant,
+        defender: Combatant,
+        carrier_card_id: int,
+        *,
+        natural: Optional[int] = None,
+        damage_roll: Optional[int] = None,
     ) -> Optional[SpellResult]:
         """Скастовать заклинание из тома/свитка в инвентаре.
 
@@ -334,6 +369,8 @@ class Combat:
             damage_dice=carrier.spell_damage_dice,
             difficulty=carrier.spell_difficulty,
             spell_name=carrier.name,
+            natural=natural,
+            damage_roll=damage_roll,
         )
 
         # AoE splash: если заклинание активировалось и имеет AoE-кубики
@@ -397,7 +434,9 @@ class Combat:
 
     # ───────── лечение / зелья (§11) ─────────
 
-    def use_potion(self, user: Combatant, item_name: Optional[str] = None) -> int:
+    def use_potion(
+        self, user: Combatant, item_name: Optional[str] = None, *, heal_roll: Optional[int] = None
+    ) -> int:
         """Применить зелье из инвентаря (тратит ход). Работает на Dying → Revived."""
         potion = None
         for it in user.inventory:
@@ -407,7 +446,7 @@ class Combat:
         if potion is None:
             self.log.append(f"{user.name}: нет зелья лечения")
             return 0
-        roll = Dice.parse(potion.heal_dice).roll(self.rng)
+        roll = _clamped_roll(Dice.parse(potion.heal_dice), heal_roll, self.rng)
         healed = user.heal(roll)
         if potion.is_consumable:
             potion.quantity -= 1

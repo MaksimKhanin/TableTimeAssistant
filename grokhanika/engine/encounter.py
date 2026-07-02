@@ -82,13 +82,14 @@ class Encounter:
     def _apply(self, action: Action, actor: Combatant) -> None:
         combat = self.combat
         kind = action.kind
+        rolls = action.rolls or {}
 
         if kind is ActionKind.PASS:
             combat.log.append(f"{actor.name} пропускает ход")
             return
 
         if kind is ActionKind.USE_POTION:
-            combat.use_potion(actor, action.item_name)
+            combat.use_potion(actor, action.item_name, heal_roll=rolls.get("heal_roll"))
             return
 
         if kind is ActionKind.FLEE:
@@ -129,9 +130,15 @@ class Encounter:
             return
 
         if kind is ActionKind.ATTACK_PHYSICAL:
-            combat.physical_attack(actor, target)
+            combat.physical_attack(
+                actor, target,
+                natural=rolls.get("natural"), damage_roll=rolls.get("damage_roll"),
+            )
         elif kind is ActionKind.CAST_SPELL:
-            combat.cast_from_carrier(actor, target, action.carrier_card_id)
+            combat.cast_from_carrier(
+                actor, target, action.carrier_card_id,
+                natural=rolls.get("natural"), damage_roll=rolls.get("damage_roll"),
+            )
         elif kind is ActionKind.ATTACK_MENTAL:
             combat.mental_attack(actor, target, effect=action.effect)
 

@@ -1,0 +1,114 @@
+/* Окно броска кубика (js/dice.js) — общее для приключения и боя.
+   Использует переменные темы из style.css. */
+
+.dice-backdrop {
+  position: fixed; inset: 0; z-index: 220;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10, 8, 16, .72);
+  backdrop-filter: blur(4px);
+  animation: fade-up .2s ease both;
+}
+
+.dice-box {
+  width: min(420px, calc(100vw - 32px));
+  padding: 26px 28px 24px;
+  background: linear-gradient(160deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow), 0 0 0 1px rgba(201, 162, 74, .12);
+  text-align: center;
+  animation: pop-in .25s ease both;
+  transition: box-shadow .25s;
+}
+.dice-box.out-crit    { box-shadow: var(--shadow), 0 0 42px rgba(201, 162, 74, .55); }
+.dice-box.out-success { box-shadow: var(--shadow), 0 0 34px rgba(95, 191, 106, .4); }
+.dice-box.out-fail    { box-shadow: var(--shadow), 0 0 30px rgba(226, 87, 76, .3); }
+.dice-box.out-fumble  { box-shadow: var(--shadow), 0 0 40px rgba(226, 87, 76, .55); animation: dice-shake .4s ease; }
+
+.dice-actor { color: var(--muted); font-size: 13px; min-height: 16px; }
+.dice-title { font-size: 20px; font-weight: 700; margin-top: 2px; }
+.dice-formula {
+  margin-top: 6px; font-size: 15px; color: var(--accent);
+  font-variant-numeric: tabular-nums; letter-spacing: .4px;
+}
+.dice-crit-note { margin-top: 8px; font-size: 13px; color: var(--accent); font-weight: 600; }
+
+/* ── кубик ── */
+.dice-stage { display: flex; justify-content: center; padding: 18px 0 6px; }
+.dice-die { position: relative; width: 132px; height: 132px; }
+.dice-die svg { width: 100%; height: 100%; overflow: visible; }
+.dice-shape {
+  fill: var(--bg-2);
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, .5));
+  transition: stroke .2s, fill .2s;
+}
+.dice-num {
+  fill: var(--text);
+  font-size: 40px; font-weight: 800;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+.dice-notation {
+  position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%);
+  font-size: 12px; color: var(--muted); letter-spacing: 1px;
+}
+
+.dice-die.rolling { animation: dice-tumble .5s linear infinite; }
+.dice-die.landed  { animation: dice-land .35s ease both; }
+
+.dice-die.out-crit .dice-shape,
+.dice-die.out-number .dice-shape { stroke: var(--accent); fill: #2e2712; }
+.dice-die.out-crit .dice-num     { fill: var(--accent); }
+.dice-die.out-success .dice-shape { stroke: var(--good); fill: #1c2b1c; }
+.dice-die.out-success .dice-num   { fill: var(--good); }
+.dice-die.out-fail .dice-shape,
+.dice-die.out-fumble .dice-shape { stroke: var(--danger); fill: #2e1614; }
+.dice-die.out-fail .dice-num,
+.dice-die.out-fumble .dice-num   { fill: var(--danger); }
+
+@keyframes dice-tumble {
+  0%   { transform: rotate(0deg)   scale(1); }
+  25%  { transform: rotate(12deg)  scale(1.06) translateY(-6px); }
+  50%  { transform: rotate(-8deg)  scale(.97); }
+  75%  { transform: rotate(9deg)   scale(1.04) translateY(-3px); }
+  100% { transform: rotate(0deg)   scale(1); }
+}
+@keyframes dice-land {
+  0%   { transform: scale(1.35); }
+  60%  { transform: scale(.92); }
+  100% { transform: scale(1); }
+}
+@keyframes dice-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(7px); }
+  60% { transform: translateX(-5px); }
+  80% { transform: translateX(3px); }
+}
+
+/* ── исход ── */
+.dice-outcome {
+  margin-top: 10px; font-size: 24px; font-weight: 800; letter-spacing: .5px;
+  animation: pop-in .25s ease both;
+}
+.dice-outcome.out-crit    { color: var(--accent); text-shadow: 0 0 18px rgba(201, 162, 74, .7); }
+.dice-outcome.out-success { color: var(--good); }
+.dice-outcome.out-fail    { color: var(--danger); }
+.dice-outcome.out-fumble  { color: var(--danger); text-shadow: 0 0 16px rgba(226, 87, 76, .7); }
+.dice-outcome.out-number  { color: var(--accent); }
+
+/* ── управление ── */
+.dice-controls { margin-top: 16px; }
+.dice-controls .dice-auto { width: 100%; font-size: 16px; padding: 12px; }
+.dice-or { margin: 12px 0 8px; color: var(--muted); font-size: 12px; }
+.dice-manual { display: flex; gap: 8px; justify-content: center; }
+.dice-input {
+  width: 110px; padding: 10px 12px; text-align: center; font-size: 18px;
+  background: var(--bg-2); color: var(--text);
+  border: 1px solid var(--line); border-radius: 10px;
+}
+.dice-input:focus { outline: none; border-color: var(--accent); }
+.dice-input.shake { animation: dice-shake .35s ease; border-color: var(--danger); }
+.dice-hint { margin-top: 10px; font-size: 12px; color: var(--muted); }

@@ -35,6 +35,9 @@ class Action:
     item_name: Optional[str] = None
     effect: Optional[object] = None  # RuntimeEffect для ментальной атаки
     ability_name: Optional[str] = None  # для ACTIVATE_ABILITY
+    # заранее сделанные броски игрока (ручной ввод или автобросок через окно кубика):
+    # {"natural": d20-атаки, "damage_roll": сумма кубиков урона, "heal_roll": сумма кубиков лечения}
+    rolls: Optional[dict] = None
 
     # ── фабрики для краткости ──
 
