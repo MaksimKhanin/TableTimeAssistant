@@ -177,6 +177,36 @@ def adventure_message(adv_id: int):
     return _stream_response(work)
 
 
+@adventure_api.post("/adventure/<int:adv_id>/roll")
+def adventure_roll(adv_id: int):
+    """Принять бросок проверки из окна кубика и продолжить повествование.
+
+    Тело: {"roll_type": str, "difficulty": int, "value": int, "auto": bool}.
+    Значение уже брошено на стороне UI (ручной ввод реального кубика или
+    автобросок с анимацией); сервер фиксирует исход и стримит рассказ ГМ."""
+    if _session().get(AdventureSession, adv_id) is None:
+        return jsonify({"error": "приключение не найдено"}), 404
+    body = request.get_json(silent=True) or {}
+    try:
+        value = int(body.get("value"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "value (1..20) обязателен"}), 400
+    try:
+        difficulty = int(body.get("difficulty") or 0)
+    except (TypeError, ValueError):
+        difficulty = 0
+    roll_type = str(body.get("roll_type") or "")
+    auto = bool(body.get("auto"))
+
+    def work(session):
+        adv = session.get(AdventureSession, adv_id)
+        yield from advsession.resolve_roll(
+            session, adv, roll_type=roll_type, value=value, difficulty=difficulty, auto=auto
+        )
+
+    return _stream_response(work)
+
+
 @adventure_api.post("/adventure/<int:adv_id>/battle/resolve")
 def adventure_battle_resolve(adv_id: int):
     """Подвести LLM-итог завершившегося боя и вернуться к повествованию."""

@@ -203,6 +203,57 @@ def test_battle_resolve_stream_narrates_and_returns_scene(client):
     assert "Гоблин" not in npc_names
 
 
+def test_roll_stream_fixes_outcome_and_narrates(client):
+    c, factory, _holder = client
+    sid = c.post(
+        "/api/adventure/start",
+        json={"description": "город", "character_ids": _party_ids(factory), "goal": "дела"},
+    ).get_json()["session_id"]
+    c.get(f"/api/adventure/{sid}/intro")  # вводная
+
+    resp = c.post(
+        f"/api/adventure/{sid}/roll",
+        json={"roll_type": "скрытность", "difficulty": 14, "value": 17, "auto": False},
+    )
+    assert resp.status_code == 200
+    frames = _frames(resp)
+    outcome_frame = next(f for f in frames if f["type"] == "roll_outcome")
+    assert outcome_frame["value"] == 17 and outcome_frame["outcome"] == "success"
+    types = [f["type"] for f in frames]
+    assert "delta" in types and "done" in types
+
+    # бросок и ответ ГМ сохранены в истории приключения
+    got = c.get(f"/api/adventure/{sid}").get_json()
+    roll_msgs = [m for m in got["messages"] if "🎲" in (m["content"] or "")]
+    assert roll_msgs and "17" in roll_msgs[-1]["content"]
+
+
+def test_roll_natural_one_is_fumble(client):
+    c, factory, _holder = client
+    sid = c.post(
+        "/api/adventure/start",
+        json={"description": "город", "character_ids": _party_ids(factory), "goal": "дела"},
+    ).get_json()["session_id"]
+    c.get(f"/api/adventure/{sid}/intro")
+
+    frames = _frames(c.post(
+        f"/api/adventure/{sid}/roll",
+        json={"roll_type": "взлом", "difficulty": 8, "value": 1, "auto": True},
+    ))
+    outcome_frame = next(f for f in frames if f["type"] == "roll_outcome")
+    assert outcome_frame["outcome"] == "fumble"
+
+
+def test_roll_requires_value(client):
+    c, factory, _holder = client
+    sid = c.post(
+        "/api/adventure/start",
+        json={"description": "город", "character_ids": _party_ids(factory), "goal": "дела"},
+    ).get_json()["session_id"]
+    resp = c.post(f"/api/adventure/{sid}/roll", json={"roll_type": "скрытность"})
+    assert resp.status_code == 400
+
+
 def test_reindex_embeddings_stream_reports_progress(client):
     c, _factory, _holder = client
     resp = c.post("/api/adventure/reindex-embeddings")

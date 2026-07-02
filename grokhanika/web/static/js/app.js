@@ -1455,13 +1455,30 @@ async function sendAction(actionData) {
   ib.status = "processing";
   clearTurnHighlight();
 
-  const { ok, data } = await API.post(`/api/battle/${ib.battleId}/action`, actionData);
+  let { ok, data } = await API.post(`/api/battle/${ib.battleId}/action`, actionData);
   if (!ok) {
     toast(data.error || "Ошибка", true);
     ib.status = "waiting";
     if (ib.actor) highlightActorTurn(ib.actor);
     return;
   }
+
+  // Броски игрока: сервер просит кубик (атака → урон), пока действие не разрешится
+  while (data.status === "roll") {
+    const choice = await DiceModal.open(data.roll);
+    if (choice.auto) DiceModal.spin();
+    const res = await API.post(`/api/battle/${ib.battleId}/roll`, { value: choice.value });
+    if (!res.ok) {
+      DiceModal.close();
+      toast(res.data.error || "Ошибка броска", true);
+      ib.status = "waiting";
+      if (ib.actor) highlightActorTurn(ib.actor);
+      return;
+    }
+    data = res.data;
+    if (data.roll_result) await DiceModal.settle(data.roll_result);
+  }
+  DiceModal.close();
 
   await animateBattleEvents(data.events);
 
@@ -2341,6 +2358,7 @@ const advState = {
   type: "custom", selectedIds: new Set(),
   session: null, streaming: false, loreEditId: null,
   battleActive: false, battleEnemyIds: [],
+  lastIntent: null, combatOffered: false,
 };
 
 const advEsc = (s) => String(s == null ? "" : s)
@@ -2581,10 +2599,12 @@ async function streamGM(url, opts) {
         bubble.textEl.textContent += ev.text;
         $("#adv-chat").scrollTop = $("#adv-chat").scrollHeight;
       } else if (ev.type === "intent") {
+        advState.lastIntent = ev.intent;
         setIntentTag(bubble, ev.intent);
       } else if (ev.type === "scene") {
         renderScene(ev.scene);
       } else if (ev.type === "combat_ready") {
+        advState.combatOffered = true;
         renderCombatReadyCard(ev.enemy_ids, ev.enemy_names);
       } else if (ev.type === "error") {
         toast("ГМ: " + ev.error, true);
@@ -2632,8 +2652,53 @@ async function advSend() {
   const speakerName = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : "Игрок";
   addBubble("player", speakerName, text);
   ta.value = "";
+  advState.lastIntent = null;
+  advState.combatOffered = false;
   await streamGM(`/api/adventure/${advState.session.id}/message`,
     { method: "POST", body: { character_id: speakerId, text } });
+
+  // Проверка по интенту: ГМ описал попытку — теперь бросок через окно кубика.
+  // Если назревает бой, бросок относится к нему и обрабатывается боевой ареной.
+  const intent = advState.lastIntent;
+  if (intent && intent.requires_roll && !intent.combat_initiation && !advState.combatOffered) {
+    await advRollCheck(intent, speakerName);
+  }
+}
+
+// ── бросок проверки в приключении (общее окно кубика) ──
+
+const _ROLL_OUTCOME_RU = {
+  crit: "критический успех", success: "успех",
+  fail: "провал", fumble: "критический провал",
+};
+
+async function advRollCheck(intent, actorName) {
+  const difficulty = Number(intent.roll_difficulty) || 0;
+  const threshold = difficulty > 0 ? difficulty : 12;
+  const label = intent.roll_type || "испытание";
+  const choice = await DiceModal.open({
+    stage: "check", dice: "1d20", count: 1, sides: 20, min: 1, max: 20,
+    modifier: 0, threshold,
+    label: `Проверка: ${label}`, actor: actorName || "",
+  });
+
+  let value = choice.value;
+  if (choice.auto) {
+    DiceModal.spin();
+    value = 1 + Math.floor(Math.random() * 20);
+    await pause(900); // дать кубику покрутиться
+  }
+  const outcome = value === 20 ? "crit" : value === 1 ? "fumble"
+    : value >= threshold ? "success" : "fail";
+  await DiceModal.settle({ value, total: value, threshold, outcome });
+  DiceModal.close();
+
+  addBubble("player", "🎲 Бросок",
+    `${label}: d20 = ${value} против ${threshold} — ${_ROLL_OUTCOME_RU[outcome]}`);
+  await streamGM(`/api/adventure/${advState.session.id}/roll`, {
+    method: "POST",
+    body: { roll_type: label, difficulty, value, auto: choice.auto },
+  });
 }
 
 function sceneCard(card) {

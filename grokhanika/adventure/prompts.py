@@ -184,6 +184,34 @@ def enrichment_for(intent, *, combat_ready: bool = True) -> str:
     return " ".join(notes)
 
 
+# ───────────────────────── итог проверки (бросок кубика) ─────────────────────────
+
+_ROLL_OUTCOME_HINTS = {
+    "crit": "блестящий, безоговорочный успех (натуральная 20) — попытка удаётся ярче, чем ожидалось.",
+    "success": "попытка удалась — опиши успех и его последствия.",
+    "fail": "попытка провалилась — опиши неудачу и её последствия, не наказывая игрока сверх меры.",
+    "fumble": "критический провал (натуральная 1) — попытка проваливается зрелищно, с осложнением.",
+}
+
+
+def roll_outcome_kickoff(*, label: str, value: int, difficulty: int, outcome: str) -> str:
+    """Реплика-затравка для ГМ: игрок сделал бросок проверки, рассказать исход."""
+    outcome_ru = {
+        "crit": "критический успех",
+        "success": "успех",
+        "fail": "провал",
+        "fumble": "критический провал",
+    }.get(outcome, outcome)
+    return fill_template(
+        load_templates()["roll_outcome_kickoff_template"],
+        label=label or "проверка",
+        value=str(value),
+        difficulty=str(difficulty) if difficulty > 0 else "по усмотрению ГМ",
+        outcome=outcome_ru,
+        outcome_hint=_ROLL_OUTCOME_HINTS.get(outcome, "исход решает ГМ."),
+    )
+
+
 # ───────────────────────── итог боя ─────────────────────────
 
 _ENDED_BY_RU = {

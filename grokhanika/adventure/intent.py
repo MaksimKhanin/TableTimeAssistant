@@ -34,6 +34,7 @@ class Intent:
     intent_type: str = "dialogue"
     requires_roll: bool = False
     roll_type: str = ""
+    roll_difficulty: int = 0
     combat_initiation: bool = False
     leaves_location: bool = False
     location_name: str = ""
@@ -48,6 +49,7 @@ class Intent:
             "intent_type": self.intent_type,
             "requires_roll": self.requires_roll,
             "roll_type": self.roll_type,
+            "roll_difficulty": self.roll_difficulty,
             "combat_initiation": self.combat_initiation,
             "leaves_location": self.leaves_location,
             "location_name": self.location_name,
@@ -120,6 +122,7 @@ def parse_intent(raw: str) -> Intent:
         intent_type=intent_type,
         requires_roll=_as_bool(data.get("requires_roll")),
         roll_type=str(data.get("roll_type", "")).strip(),
+        roll_difficulty=max(0, min(_as_int(data.get("roll_difficulty")), 30)),
         combat_initiation=_as_bool(data.get("combat_initiation")),
         leaves_location=_as_bool(data.get("leaves_location")),
         location_name=str(data.get("location_name", "")).strip(),
