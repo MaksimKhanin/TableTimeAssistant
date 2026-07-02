@@ -30,14 +30,14 @@ def test_buff_allies_hits_whole_party_not_enemies(catalog):
 
 
 def test_debuff_enemies_is_contested_per_target(catalog):
-    necro = Combatant(catalog["necromancer"], "enemy")  # «Леденящий взор»
+    witch = Combatant(catalog["witch"], "enemy")  # «Сглаз» (CHA=6 → mental_attack_bonus=3)
     andr = Combatant(catalog["andryusha"], "party")  # мент.защ 7
     salli = Combatant(catalog["salli"], "party")     # мент.защ 6
     # порядок врагов = [andr, salli]; на каждого по 2 d20 (атака, защита)
     # andr: atk 20+3=23 vs def 1+7=8 -> успех;  salli: atk 1+3=4 vs def 1+6=7 -> провал
-    combat = Combat([andr, salli, necro], rng=ScriptedRandom(ints=[20, 1, 1, 1]))
+    combat = Combat([andr, salli, witch], rng=ScriptedRandom(ints=[20, 1, 1, 1]))
 
-    combat.activate_ability(necro, "Леденящий взор")
+    combat.activate_ability(witch, "Сглаз")
     # дебафф только на броски атаки (не на спасброски/защиту)
     assert roll_modifier(andr.active_effects, attack=True) == -2
     assert roll_modifier(andr.active_effects, attack=False) == 0

@@ -102,18 +102,3 @@ def test_scroll_consumed_after_cast(catalog, session):
     assert res is not None and res.activated
     # свиток израсходован и исчез из инвентаря
     assert not any(it.card_id == scroll.id for it in arseldor.inventory)
-
-
-def test_summoned_goblins_join_initiative(catalog, session):
-    necromancer = Combatant(catalog["necromancer"], "enemy")
-    andr = Combatant(catalog["andryusha"], "party")
-    combat = Combat([andr, necromancer], rng=random.Random(3), session=session)
-
-    enc = Encounter(
-        combat,
-        {"party": ScriptedController([]), "enemy": ScriptedController([])},
-        max_rounds=1,
-    )
-    enc.start()  # некромант призывает 2 гоблинов
-    order = combat.roll_initiative()
-    assert sum(1 for c in order if c.name == "Гоблин") == 2

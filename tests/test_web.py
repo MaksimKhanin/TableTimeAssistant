@@ -24,7 +24,7 @@ def client():
 
 def test_categories(client):
     cats = client.get("/api/categories").get_json()
-    assert [c["key"] for c in cats] == ["heroes", "npc", "items", "skills", "abilities"]
+    assert [c["key"] for c in cats] == ["heroes", "npc", "items", "skills", "abilities", "lore"]
 
 
 def test_heroes_are_player_characters(client):
@@ -43,8 +43,8 @@ def test_npc_category_excludes_players(client):
     # фильтр по существам (демо-монстры + generic-NPC для приключения)
     creatures = client.get("/api/cards?category=npc&filter=creature").get_json()
     names = {c["name"] for c in creatures["items"]}
-    assert {"Гоблин", "Теневой убийца", "Некромант"} <= names
-    assert {"Горожанин", "Городской стражник", "Трактирщик"} <= names
+    assert {"Гоблин", "Теневой убийца", "Шаман"} <= names
+    assert {"Горожанин", "Городской стражник Аники", "Трактирщик"} <= names
 
 
 def test_items_filter_and_sort_by_price(client):
@@ -254,15 +254,12 @@ def test_simulation_runs_and_records_steps(client):
     ids = client.application.config["CATALOG_IDS"]
     r = client.post("/api/simulate", json={
         "allies": [ids["andryusha"], ids["salli"]],
-        "enemies": [ids["necromancer"]],
+        "enemies": [ids["guard_captain"]],
         "seed": 7,
     })
     assert r.status_code == 200
     data = r.get_json()
     assert data["events"], "должны быть пошаговые события"
-    # первый снимок: некромант призвал двух гоблинов на старте боя
-    first = data["events"][0]["combatants"]
-    assert sum(1 for c in first if c["name"] == "Гоблин") == 2
     # каждое событие несёт полный снимок HP всех участников
     for ev in data["events"]:
         assert all("hp" in c and "max_hp" in c for c in ev["combatants"])

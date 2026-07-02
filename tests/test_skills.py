@@ -120,9 +120,13 @@ def test_learn_from_tome_idempotent(catalog, session):
 
 
 def test_learn_from_tome_without_skill_raises(catalog):
-    # «Том Магический луч» никого не учит навыку
+    from grokhanika.db.models import SpellBook
+    empty_tome = SpellBook(
+        name="Пустой том", spell_name="Заглушка",
+        damage_dice="1d4", difficulty=5, attack_stat="wisdom", price=1,
+    )
     try:
-        learn_from_tome(catalog["arseldor"], catalog["tome_ray"])
+        learn_from_tome(catalog["arseldor"], empty_tome)
         assert False, "ожидалась LearnError"
     except LearnError:
         pass
