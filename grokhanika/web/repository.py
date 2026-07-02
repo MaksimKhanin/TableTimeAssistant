@@ -420,6 +420,29 @@ def delete_lore(session: Session, lore_id: int) -> bool:
     return True
 
 
+def regenerate_card_image(session: Session, card_id: int) -> Optional[dict]:
+    """Перегенерировать арт карточки по описанию (кнопка в админке).
+
+    Промт = описание карточки + стилевой промт из настроек генерации
+    изображений. Бросает :class:`image_gen.ImageGenError`, если модель
+    недоступна или ответила не так, как ожидалось.
+    """
+    from . import image_gen
+
+    card = session.get(Card, card_id)
+    if card is None:
+        return None
+
+    cfg = image_gen.get_config(session)
+    prompt = image_gen.build_prompt(card.description, cfg.get("style_prompt", ""))
+    client = image_gen.client_for(session)
+    image_bytes = client.generate(prompt)
+
+    card.image_id = image_gen.save_image(card, image_bytes)
+    session.commit()
+    return serialize_card(card, full=True)
+
+
 def update_card(session: Session, card_id: int, card_type: str, payload: dict) -> Optional[dict]:
     """Обновить существующую карточку. Бросает :class:`UpdateError` при ошибках."""
     card = session.get(Card, card_id)
