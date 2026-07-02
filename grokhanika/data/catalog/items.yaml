@@ -1,0 +1,295 @@
+# Предметы инвентаря: зелья, талисманы, щиты и т.д. (манифест §14).
+# grants_skill — ссылка (по id) на карточку в skills.yaml; резолвится вторым
+# проходом загрузчика.
+
+small_heal:
+  name: 'Малое зелье лечения'
+  description: 'Маленький пузырёк зелья — быстро затягивает незначительные порезы и ссадины.'
+  heal_dice: '1d4'
+  price: 4
+  is_consumable: true
+
+heal:
+  name: 'Зелье лечения'
+  description: 'Добротное зелье — возвращает силы после серьёзных боевых ранений.'
+  heal_dice: '2d4'
+  price: 6
+  is_consumable: true
+
+big_heal:
+  name: 'Большое зелье лечения'
+  description: 'Мощный эликсир восстановления, способный поднять воина даже с порога смерти.'
+  heal_dice: '3d4'
+  price: 10
+  is_consumable: true
+
+luck_talisman:
+  name: 'Талисман удачи'
+  description: 'Зачарованный амулет с клевером — судьба благосклоннее к носителю во всех бросках.'
+  price: 10
+  effects:
+    - target_type: attr
+      target: all_d20_rolls
+      modifier: 2
+      source_type: item
+      activation_source: in_inventory
+      description: 'Талисман удачи: +2 ко всем d20'
+
+wooden_shield:
+  name: 'Деревянный щит'
+  description: 'Прочный деревянный щит останавливает удары, но немного сковывает ловкость владельца.'
+  price: 7
+  effects:
+    - target_type: attr
+      target: phys_defense
+      modifier: 1
+      source_type: item
+      activation_source: in_inventory
+      description: 'Деревянный щит: +1 физ.защ.'
+    - target_type: stat
+      target: dexterity
+      modifier: -1
+      source_type: item
+      activation_source: in_inventory
+      description: 'Деревянный щит: DEX -1'
+
+# Уникальный щит с теми же характеристиками, что у деревянного, но дающий
+# пассивный навык «Бастион», пока лежит в инвентаре.
+improdor_defender:
+  name: 'Защитник Импродора'
+  description: 'Уникальный щит: те же характеристики, что у деревянного, плюс навык «Бастион».'
+  price: 7
+  is_unique: true
+  grants_skill: skill_bastion
+  effects:
+    - target_type: attr
+      target: phys_defense
+      modifier: 1
+      source_type: item
+      activation_source: in_inventory
+      description: 'Защитник Импродора: +1 физ.защ.'
+    - target_type: stat
+      target: dexterity
+      modifier: -1
+      source_type: item
+      activation_source: in_inventory
+      description: 'Защитник Импродора: DEX -1'
+
+vitality_amulet:
+  name: 'Амулет живучести'
+  description: 'Рубиновый амулет, укрепляющий жизненные силы и расширяющий запас здоровья носителя.'
+  price: 10
+  effects:
+    - target_type: attr
+      target: hp
+      modifier: 5
+      source_type: item
+      activation_source: in_inventory
+      description: 'Амулет живучести: +5 HP'
+
+magic_arrows:
+  name: 'Магические стрелы'
+  description: 'Колчан зачарованных стрел. Не тупятся, летят точнее — дают +2 к физ.урону при стрельбе из лука.'
+  price: 8
+  effects:
+    - target_type: attr
+      target: phys_damage
+      modifier: 2
+      source_type: item
+      activation_source: in_inventory+ranged
+      description: 'Магические стрелы: +2 к физ.урону (только с луком)'
+
+dex_gloves:
+  name: 'Перчатки ловкача'
+  description: 'Перчатки из паучьего шёлка — чуть ускоряют реакцию и движения носителя.'
+  price: 8
+  effects:
+    - target_type: stat
+      target: dexterity
+      modifier: 1
+      source_type: item
+      activation_source: in_inventory
+      description: 'Перчатки ловкача: DEX +1'
+
+protection_ring:
+  name: 'Кольцо защиты'
+  description: 'Зачарованное кольцо с рунами — слабо, но неустанно отражает удары.'
+  price: 10
+  effects:
+    - target_type: attr
+      target: phys_defense
+      modifier: 1
+      source_type: item
+      activation_source: in_inventory
+      description: 'Кольцо защиты: +1 физ.защ.'
+
+strength_belt:
+  name: 'Пояс силы'
+  description: 'Кованый пояс, усиливающий мышечную силу носителя волшебством кузнеца.'
+  price: 12
+  effects:
+    - target_type: stat
+      target: strength
+      modifier: 2
+      source_type: item
+      activation_source: in_inventory
+      description: 'Пояс силы: STR +2'
+
+wisdom_amulet:
+  name: 'Амулет мудрости'
+  description: 'Серебряный амулет с лунным камнем — обостряет ум и магическую интуицию.'
+  price: 12
+  effects:
+    - target_type: stat
+      target: wisdom
+      modifier: 2
+      source_type: item
+      activation_source: in_inventory
+      description: 'Амулет мудрости: WIS +2'
+
+berserker_gauntlets:
+  name: 'Перчатки берсерка'
+  description: 'Шипованные перчатки ярости: огромный прирост силы ценой разума и ловкости.'
+  price: 15
+  effects:
+    - target_type: stat
+      target: strength
+      modifier: 3
+      source_type: item
+      activation_source: in_inventory
+      description: 'Перчатки берсерка: STR +3'
+    - target_type: stat
+      target: wisdom
+      modifier: -2
+      source_type: item
+      activation_source: in_inventory
+      description: 'Перчатки берсерка: WIS -2'
+    - target_type: stat
+      target: dexterity
+      modifier: -1
+      source_type: item
+      activation_source: in_inventory
+      description: 'Перчатки берсерка: DEX -1'
+
+shadow_boots:
+  name: 'Сапоги тени'
+  description: 'Уникальные сапоги из тёмной кожи — владелец движется бесшумно и невероятно быстро.'
+  price: 25
+  is_unique: true
+  effects:
+    - target_type: stat
+      target: dexterity
+      modifier: 4
+      source_type: item
+      activation_source: in_inventory
+      description: 'Сапоги тени: DEX +4'
+
+warrior_ring:
+  name: 'Перстень воина'
+  description: 'Простой перстень — немного укрепляет удар и рукопожатие бойца.'
+  price: 7
+  effects:
+    - target_type: stat
+      target: strength
+      modifier: 1
+      source_type: item
+      activation_source: in_inventory
+      description: 'Перстень воина: STR +1'
+
+fire_ring:
+  name: 'Кольцо огня'
+  description: 'Уникальное кольцо с рубиновым пламенем — добавляет жар к каждому удару.'
+  price: 12
+  is_unique: true
+  effects:
+    - target_type: attr
+      target: phys_damage
+      modifier: 2
+      source_type: item
+      activation_source: in_inventory
+      description: 'Кольцо огня: +2 к физ.урону'
+
+mage_focus:
+  name: 'Фокус мага'
+  description: 'Хрустальный шар — концентрирует магию, усиливает мудрость чародея.'
+  price: 10
+  effects:
+    - target_type: stat
+      target: wisdom
+      modifier: 2
+      source_type: item
+      activation_source: in_inventory
+      description: 'Фокус мага: WIS +2'
+
+hp_crystal:
+  name: 'Кристалл жизни'
+  description: 'Пульсирующий кристалл — расширяет запас сил, будто вдыхаешь горный воздух.'
+  price: 15
+  effects:
+    - target_type: attr
+      target: hp
+      modifier: 8
+      source_type: item
+      activation_source: in_inventory
+      description: 'Кристалл жизни: +8 HP'
+
+charisma_medallion:
+  name: 'Медальон харизмы'
+  description: 'Золотой медальон — окружающие инстинктивно проникаются уважением к носителю.'
+  price: 10
+  effects:
+    - target_type: stat
+      target: charisma
+      modifier: 2
+      source_type: item
+      activation_source: in_inventory
+      description: 'Медальон харизмы: CHA +2'
+
+ash_mask:
+  name: 'Маска дозорного'
+  description: 'Кожаная маска с угольными фильтрами и огромными стеклянными очками — стандартное снаряжение Пепельного Дозора. Незаменима в Пустыне Смерти: защищает от пепла, токсичного воздуха и слабых кислотных осадков Граней. В гарнизоне Пеплограда без неё из казармы не выходят.'
+  price: 5
+  effects:
+    - target_type: attr
+      target: phys_defense
+      modifier: 1
+      source_type: item
+      activation_source: in_inventory
+      description: 'Маска дозорного: +1 физ.защ.'
+
+wanderer_cloak:
+  name: 'Плащ странника'
+  description: 'Уникальный плащ воинов Тенелесья — пропитан лесной смолой и зачарован против обнаружения. Скрывает силуэт и немного рассеивает удары.'
+  price: 18
+  is_unique: true
+  effects:
+    - target_type: stat
+      target: dexterity
+      modifier: 1
+      source_type: item
+      activation_source: in_inventory
+      description: 'Плащ странника: DEX +1'
+    - target_type: attr
+      target: phys_defense
+      modifier: 1
+      source_type: item
+      activation_source: in_inventory
+      description: 'Плащ странника: +1 физ.защ.'
+
+battle_shield:
+  name: 'Боевой щит'
+  description: 'Стальной щит воина — надёжно защищает, но сильно сковывает движения.'
+  price: 12
+  effects:
+    - target_type: attr
+      target: phys_defense
+      modifier: 2
+      source_type: item
+      activation_source: in_inventory
+      description: 'Боевой щит: +2 физ.защ.'
+    - target_type: stat
+      target: dexterity
+      modifier: -2
+      source_type: item
+      activation_source: in_inventory
+      description: 'Боевой щит: DEX -2'

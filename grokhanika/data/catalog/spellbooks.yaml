@@ -1,0 +1,53 @@
+# Тома магии (§14, §6): 1 заклинание, многоразово.
+# teaches_skill — ссылка (по id) на карточку в skills.yaml, выдаваемую при чтении тома.
+
+tome_ray:
+  name: 'Том «Магический луч»'
+  description: 'Фолиант с заклинанием концентрированного разряда — бьёт одну цель мощным лучом силы.'
+  spell_name: 'Магический луч'
+  damage_dice: '1d10'
+  difficulty: 8
+  attack_stat: wisdom
+  price: 7
+  teaches_skill: skill_magic_ray
+
+tome_arrows:
+  name: 'Том «Магические стрелы»'
+  description: 'Том залпового заклинания. Выпускает 4 самонаводящиеся стрелы в цель.'
+  spell_name: 'Магические стрелы'
+  damage_dice: '4d4'
+  difficulty: 10
+  attack_stat: wisdom
+  price: 7
+  teaches_skill: skill_magic_arrows
+
+tome_fireball:
+  name: 'Том «Огненный шар»'
+  description: 'Том огненного взрыва. Основная цель — полный урон, все прочие враги получают AoE-взрыв.'
+  spell_name: 'Огненный шар'
+  damage_dice: '2d6'
+  aoe_damage_dice: '1d6'
+  difficulty: 12
+  attack_stat: wisdom
+  price: 20
+  teaches_skill: skill_fireball
+
+tome_lightning:
+  name: 'Том «Молния»'
+  description: 'Фолиант молниеносного разряда — мощнейший одиночный удар природной магии.'
+  spell_name: 'Молния'
+  damage_dice: '1d12'
+  difficulty: 10
+  attack_stat: wisdom
+  price: 15
+  teaches_skill: skill_lightning
+
+tome_frost_sphere:
+  name: 'Том «Сфера холода»'
+  description: 'Том ледяного заклинания — тяжёлый шар льда замораживает и ранит одну цель.'
+  spell_name: 'Сфера холода'
+  damage_dice: '1d10'
+  difficulty: 9
+  attack_stat: wisdom
+  price: 12
+  teaches_skill: skill_frost_sphere

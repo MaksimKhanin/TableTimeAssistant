@@ -1,0 +1,47 @@
+# Свитки: 1 заклинание, одноразово — исчезает после применения (§6, §9).
+
+scroll_fireball:
+  name: 'Свиток «Огненный шар»'
+  description: 'Одноразовый свиток: взрыв огня. Основная цель — полный урон; все прочие враги — AoE-взрыв.'
+  spell_name: 'Огненный шар'
+  damage_dice: '2d6'
+  aoe_damage_dice: '1d6'
+  difficulty: 9
+  attack_stat: wisdom
+  price: 8
+
+scroll_lightning:
+  name: 'Свиток «Молния»'
+  description: 'Одноразовый свиток: мощный разряд молнии бьёт одну цель с огромной силой.'
+  spell_name: 'Молния'
+  damage_dice: '1d12'
+  difficulty: 10
+  attack_stat: wisdom
+  price: 10
+
+scroll_ray:
+  name: 'Свиток «Магический луч»'
+  description: 'Одноразовый свиток: концентрированный луч силы бьёт одну цель.'
+  spell_name: 'Магический луч'
+  damage_dice: '1d10'
+  difficulty: 8
+  attack_stat: wisdom
+  price: 5
+
+scroll_arrows:
+  name: 'Свиток «Магические стрелы»'
+  description: 'Одноразовый свиток: залп из четырёх самонаводящихся стрел поражает цель.'
+  spell_name: 'Магические стрелы'
+  damage_dice: '4d4'
+  difficulty: 10
+  attack_stat: wisdom
+  price: 7
+
+scroll_frost_sphere:
+  name: 'Свиток «Сфера холода»'
+  description: 'Одноразовый свиток: тяжёлый шар льда замораживает и ранит одну цель.'
+  spell_name: 'Сфера холода'
+  damage_dice: '1d10'
+  difficulty: 9
+  attack_stat: wisdom
+  price: 7
