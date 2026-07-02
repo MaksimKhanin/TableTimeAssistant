@@ -51,6 +51,7 @@
         <button class="admin-sub-tab active" data-tab="world">🗂 Наполнение мира</button>
         <button class="admin-sub-tab" data-tab="sim">⚔️ Имитация боя</button>
         <button class="admin-sub-tab" data-tab="llm">🤖 LLM / RAG</button>
+        <button class="admin-sub-tab" data-tab="media">🎨 Изображения</button>
       </div>
 
       <!-- ── Под-вкладка: Наполнение мира ── -->
@@ -241,6 +242,46 @@
           <div class="llm-settings-actions">
             <button class="btn-secondary" id="llm-test">🔌 Проверить подключение</button>
             <button class="btn-primary" id="llm-save">💾 Сохранить настройки</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Под-вкладка: Изображения ── -->
+      <div class="admin-sub-section hidden" data-section="media">
+        <div class="llm-settings-page">
+          <div class="llm-settings-head">
+            <h3>🎨 Генерация изображений</h3>
+            <p class="hint">OpenAI-совместимый эндпоинт <code>/images/generations</code> (OpenAI, локальные серверы с таким же API и т.п.). Кнопка «🖼 Перегенерировать» на карточке персонажа/существа/предмета/навыка собирает промт из описания карточки и стилевого промта ниже и отправляет его этой модели.</p>
+          </div>
+
+          <div class="llm-settings-grid">
+            <div class="llm-settings-col">
+              <fieldset class="ai-group">
+                <legend>🖼 Модель изображений</legend>
+                <label class="field"><span class="field-label">Эндпоинт (base_url)</span>
+                  <input id="media-image-base_url" placeholder="https://api.openai.com/v1"></label>
+                <label class="field"><span class="field-label">Модель</span>
+                  <input id="media-image-model" placeholder="dall-e-3"></label>
+                <label class="field"><span class="field-label">API-ключ (опц.)</span>
+                  <input id="media-image-api_key" type="password" placeholder="(пусто для локального)"></label>
+                <label class="field"><span class="field-label">Размер</span>
+                  <input id="media-image-size" placeholder="1024x1024"></label>
+                <div class="ai-status" id="media-image-status"></div>
+              </fieldset>
+            </div>
+
+            <div class="llm-settings-col">
+              <fieldset class="ai-group">
+                <legend>🎨 Стилевой промт</legend>
+                <label class="field"><span class="field-label">Добавляется ко всем запросам генерации — после описания карточки</span>
+                  <textarea id="media-image-style_prompt" rows="7" placeholder="Единый художественный стиль для всего арта…"></textarea></label>
+              </fieldset>
+            </div>
+          </div>
+
+          <div class="llm-settings-actions">
+            <button class="btn-secondary" id="media-test">🔌 Проверить подключение</button>
+            <button class="btn-primary" id="media-save">💾 Сохранить настройки</button>
           </div>
         </div>
       </div>

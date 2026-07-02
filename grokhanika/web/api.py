@@ -8,7 +8,7 @@ from __future__ import annotations
 from flask import Blueprint, g, jsonify, request
 
 from ..enums import CardType
-from . import repository, schema
+from . import image_gen, repository, schema
 from .serialize import serialize_card
 from .simulation import run_simulation, start_interactive, submit_action
 from sqlalchemy import select
@@ -109,6 +109,47 @@ def update_card(card_id: int):
     if updated is None:
         return jsonify({"error": "карточка не найдена"}), 404
     return jsonify(updated)
+
+
+# ───────────────────────── генерация изображений ─────────────────────────
+
+
+@api.get("/settings/image")
+def image_settings_get():
+    """Настройки модели генерации изображений (эндпоинт/модель/ключ/стиль)."""
+    return jsonify(image_gen.get_config(_session()))
+
+
+@api.put("/settings/image")
+def image_settings_put():
+    body = request.get_json(silent=True) or {}
+    return jsonify(image_gen.save_config(_session(), body))
+
+
+@api.post("/settings/image/test")
+def image_settings_test():
+    """Health-check эндпоинта генерации изображений (с учётом переданных правок)."""
+    body = request.get_json(silent=True) or {}
+    cfg = {**image_gen.get_config(_session()), **body}
+    client = image_gen.ImageGenClient(
+        base_url=cfg.get("base_url", ""),
+        model=cfg.get("model", ""),
+        api_key=cfg.get("api_key", ""),
+        size=cfg.get("size", "1024x1024"),
+    )
+    return jsonify(client.health_check())
+
+
+@api.post("/cards/<int:card_id>/regenerate-image")
+def regenerate_card_image(card_id: int):
+    """Перегенерировать арт карточки по описанию (кнопка в админке)."""
+    try:
+        result = repository.regenerate_card_image(_session(), card_id)
+    except image_gen.ImageGenError as exc:
+        return jsonify({"error": str(exc)}), 502
+    if result is None:
+        return jsonify({"error": "карточка не найдена"}), 404
+    return jsonify(result)
 
 
 # ───────────────────────── состояние группы ─────────────────────────

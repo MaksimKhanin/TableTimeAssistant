@@ -123,6 +123,7 @@ function showAdminTab(tab) {
   $$(".admin-sub-section").forEach(s => s.classList.toggle("hidden", s.dataset.section !== tab));
   if (tab === "sim" && !state.roster) initSim();
   if (tab === "llm") loadLLMSettings();
+  if (tab === "media") loadImageSettings();
 }
 
 document.addEventListener("click", (e) => {
@@ -332,6 +333,8 @@ function showDetail(card) {
     rows.push(`<div class="k">Способности</div><div>${card.abilities.map(esc).join(", ")}</div>`);
   }
   const canEdit = state.forms && state.forms.some(f => f.card_type === card.card_type);
+  // арт можно перегенерировать у всего, что редактируется в админке, кроме лора
+  const canRegenImage = canEdit && card.card_type !== "lore";
   $("#detail-body").innerHTML = `
     <button class="modal-close detail-close-btn" id="detail-close">✕</button>
     <div class="detail-art" style="${artStyle(card)}">${icon}
@@ -344,11 +347,29 @@ function showDetail(card) {
     </div>
     <div class="detail-foot">
       ${canEdit ? `<button class="btn-edit" id="detail-edit-btn">✏️ Редактировать</button>` : ""}
+      ${canRegenImage ? `<button class="btn-secondary" id="detail-regen-btn">🖼 Перегенерировать</button>` : ""}
       <button class="btn-danger" id="detail-delete">🗑 Удалить</button>
     </div>`;
   $("#detail-close").onclick = () => closeModal("#detail-modal");
   if (canEdit) {
     $("#detail-edit-btn").onclick = () => { closeModal("#detail-modal"); openEditForm(card); };
+  }
+  if (canRegenImage) {
+    $("#detail-regen-btn").onclick = async () => {
+      const btn = $("#detail-regen-btn");
+      btn.disabled = true;
+      btn.textContent = "⏳ Генерация…";
+      const { ok, data } = await API.post(`/api/cards/${card.id}/regenerate-image`, {});
+      if (!ok) {
+        toast((data && data.error) || "Не удалось перегенерировать изображение", true);
+        btn.disabled = false;
+        btn.textContent = "🖼 Перегенерировать";
+        return;
+      }
+      toast("Изображение перегенерировано");
+      loadCards();
+      showDetail(data);
+    };
   }
   $("#detail-delete").onclick = async () => {
     if (!confirm(`Удалить «${esc(card.name)}»? Это действие необратимо.`)) return;
@@ -2219,6 +2240,56 @@ $$(".llm-chip").forEach(chip => {
 
 $("#llm-save").onclick = saveLLMSettings;
 $("#llm-test").onclick = testLLMSettings;
+
+// ═════════════════════════ Изображения (арт карточек) ═════════════════════════
+
+const IMAGE_FIELDS = ["base_url", "model", "api_key", "size", "style_prompt"];
+let _imageSettingsLoaded = false;
+
+async function loadImageSettings() {
+  if (_imageSettingsLoaded) return;
+  _imageSettingsLoaded = true;
+  const cfg = await API.get("/api/settings/image");
+  IMAGE_FIELDS.forEach(f => {
+    const el = $(`#media-image-${f}`);
+    if (el && cfg[f] != null) el.value = cfg[f];
+  });
+}
+
+function collectImageSettings() {
+  const out = {};
+  IMAGE_FIELDS.forEach(f => {
+    const el = $(`#media-image-${f}`);
+    if (el) out[f] = el.value;
+  });
+  return out;
+}
+
+async function saveImageSettings() {
+  const r = await fetch("/api/settings/image", {
+    method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(collectImageSettings()),
+  });
+  if (!r.ok) { toast("Не удалось сохранить настройки изображений", true); return; }
+  _imageSettingsLoaded = false; // принудительно перечитать при следующем открытии
+  toast("Настройки генерации изображений сохранены");
+}
+
+async function testImageSettings() {
+  const status = $("#media-image-status");
+  status.textContent = "проверка…";
+  status.className = "ai-status";
+  const r = await fetch("/api/settings/image/test", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(collectImageSettings()),
+  });
+  const res = await r.json();
+  status.textContent = res.ok ? `✓ доступно (${res.model || ""})` : `✗ ${res.error || ("статус " + res.status)}`;
+  status.className = "ai-status " + (res.ok ? "ok" : "err");
+}
+
+$("#media-save").onclick = saveImageSettings;
+$("#media-test").onclick = testImageSettings;
 
 // ═════════════════════════ ПРИКЛЮЧЕНИЕ (ИИ-ГМ) ═════════════════════════
 
