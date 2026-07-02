@@ -259,7 +259,12 @@
                 <legend>🔎 Эмбеддер (RAG)</legend>
                 <label class="field"><span class="field-label">Модель sentence-transformers</span>
                   <input id="llm-embedder-model" placeholder="intfloat/multilingual-e5-base"></label>
-                <p class="hint">После смены модели запустите <code>scripts/reindex_embeddings.py</code> для переиндексации базы знаний.</p>
+                <p class="hint">После смены модели (или добавления/правки карточек) переиндексируйте базу знаний, чтобы RAG-поиск и автозапуск боя видели актуальные карточки.</p>
+                <button class="btn-secondary" id="reindex-btn" type="button">🔄 Переиндексировать эмбеддинги</button>
+                <div class="reindex-progress hidden" id="reindex-progress">
+                  <div class="reindex-progress-bar"><div class="reindex-progress-fill" id="reindex-progress-fill"></div></div>
+                  <div class="reindex-progress-label" id="reindex-progress-label"></div>
+                </div>
               </fieldset>
 
               <fieldset class="ai-group">

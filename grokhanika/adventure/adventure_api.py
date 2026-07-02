@@ -241,6 +241,24 @@ def settings_test():
     return jsonify(result)
 
 
+@adventure_api.post("/adventure/reindex-embeddings")
+def reindex_embeddings():
+    """SSE-поток переиндексации эмбеддингов (кнопка «Переиндексировать» в LLM/RAG)."""
+
+    def work(session):
+        try:
+            from . import retrieval
+        except Exception as exc:  # noqa: BLE001 - например, не установлен sentence-transformers
+            yield {"type": "error", "error": f"эмбеддер недоступен: {exc}"}
+            return
+        try:
+            yield from retrieval.reindex_iter(session)
+        except Exception as exc:  # noqa: BLE001 - не рвём поток молча
+            yield {"type": "error", "error": str(exc)}
+
+    return _stream_response(work)
+
+
 # ───────────────────────── лор-база (CRUD) ─────────────────────────
 
 

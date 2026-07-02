@@ -93,3 +93,18 @@ def test_lore_only_search(session):
 
 def test_empty_query_returns_nothing(session):
     assert retrieval.semantic_search(session, "   ") == []
+
+
+def test_reindex_iter_reports_progress_and_matches_reindex_count(session):
+    events = list(retrieval.reindex_iter(session))
+    assert events[0]["type"] == "start"
+    total = events[0]["total"]
+    assert total > 0
+
+    progress = [e for e in events if e["type"] == "progress"]
+    assert [e["done"] for e in progress] == list(range(1, total + 1))
+    assert all(e["total"] == total for e in progress)
+    assert all(e["name"] for e in progress)  # у каждого события есть имя карточки
+
+    assert events[-1] == {"type": "done", "count": total}
+    assert retrieval.reindex(session) == total

@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 import hashlib
-from typing import Iterable, Optional, Sequence
+from typing import Iterable, Iterator, Optional, Sequence
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -145,19 +145,34 @@ _INDEXABLE_TYPES = {
 }
 
 
-def reindex(session: Session, *, model_name: Optional[str] = None) -> int:
-    """Пересчитать эмбеддинги всех индексируемых карточек/лора. Возвращает их число."""
+def reindex_iter(session: Session, *, model_name: Optional[str] = None) -> Iterator[dict]:
+    """Пересчитать эмбеддинги всех индексируемых карточек/лора, отдавая прогресс по ходу.
+
+    Событие на карточку — не для перформанса (без него была бы одна операция), а чтобы
+    кнопка «Переиндексировать» в админке могла показать прогресс-бар: пересчёт идёт
+    синхронно и на полусотне-сотне карточек с sentence-transformers на CPU заметно тянется.
+    """
     model = _embed_model(session, model_name)
     cards = (
         session.execute(select(Card).where(Card.card_type.in_(_INDEXABLE_TYPES)))
         .scalars()
         .all()
     )
-    count = 0
-    for card in cards:
+    total = len(cards)
+    yield {"type": "start", "total": total}
+    for i, card in enumerate(cards, start=1):
         index_card(session, card, model_name=model, commit=False)
-        count += 1
+        yield {"type": "progress", "done": i, "total": total, "name": card.name}
     session.commit()
+    yield {"type": "done", "count": total}
+
+
+def reindex(session: Session, *, model_name: Optional[str] = None) -> int:
+    """Пересчитать эмбеддинги всех индексируемых карточек/лора. Возвращает их число."""
+    count = 0
+    for event in reindex_iter(session, model_name=model_name):
+        if event["type"] == "done":
+            count = event["count"]
     return count
 
 
