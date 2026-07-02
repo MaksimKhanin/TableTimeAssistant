@@ -1,0 +1,101 @@
+# Броня (манифест §14).
+
+leather:
+  name: 'Кожаная броня'
+  description: 'Дублёная кожа — стандартная защита бандитов, торговцев и путников на дорогах империи. Не стесняет движений, но от серьёзного удара не спасёт.'
+  phys_def_bonus: 1
+  price: 8
+
+chainmail:
+  name: 'Кольчуга'
+  description: 'Армейская кольчуга — стандарт пехоты Грохании. Сотни стальных колец защищают от клинков, но сковывают ловкость.'
+  phys_def_bonus: 2
+  str_requirement: 5
+  price: 12
+  effects:
+    - target_type: stat
+      target: dexterity
+      modifier: -1
+      source_type: armor
+      activation_source: equipped_armor
+      description: 'Кольчуга: DEX -1'
+
+plate:
+  name: 'Латный доспех'
+  description: 'Парадная броня рыцарей и офицеров Грохании. Максимальная защита ценой резкого снижения манёвренности — в промышленных коридорах просто неудобен.'
+  phys_def_bonus: 3
+  str_requirement: 7
+  price: 15
+  effects:
+    - target_type: stat
+      target: dexterity
+      modifier: -3
+      source_type: armor
+      activation_source: equipped_armor
+      description: 'Латный доспех: DEX -3'
+
+mage_robes:
+  name: 'Одеяния мага'
+  description: 'Зачарованные мантии северных или лесных магов. В центральных Гранях их ношение вызывает подозрение — магия здесь считается «варварством». Концентрируют магическую силу носителя.'
+  phys_def_bonus: 0
+  price: 8
+  effects:
+    - target_type: stat
+      target: wisdom
+      modifier: 2
+      source_type: armor
+      activation_source: equipped_armor
+      description: 'Одеяния мага: WIS +2'
+
+enchanted_robes:
+  name: 'Зачарованные одеяния'
+  description: 'Одеяния высшего мага Тенелесья — тонкая ткань, насыщенная лесной магией из первородных источников. В Грани их не найдёшь в открытой продаже.'
+  phys_def_bonus: 0
+  price: 15
+  effects:
+    - target_type: stat
+      target: wisdom
+      modifier: 3
+      source_type: armor
+      activation_source: equipped_armor
+      description: 'Зачарованные одеяния: WIS +3'
+
+berserker_armor:
+  name: 'Доспех берсерка'
+  description: 'Боевая броня кланов Вьюжных Пределов. Северяне верят, что металл, закалённый в снегу и ярости, даёт носителю силу — и они правы.'
+  phys_def_bonus: 2
+  str_requirement: 6
+  price: 15
+  effects:
+    - target_type: stat
+      target: strength
+      modifier: 3
+      source_type: armor
+      activation_source: equipped_armor
+      description: 'Доспех берсерка: STR +3'
+    - target_type: stat
+      target: dexterity
+      modifier: -3
+      source_type: armor
+      activation_source: equipped_armor
+      description: 'Доспех берсерка: DEX -3'
+
+scout_armor:
+  name: 'Лёгкий доспех разведчика'
+  description: 'Доспех следопытов Тенелесья: лёгкий, не стесняет движений, сшит из кожи с вставками из магического дерева. Идеален для лесной засады и быстрого отхода.'
+  phys_def_bonus: 1
+  price: 12
+  effects:
+    - target_type: stat
+      target: dexterity
+      modifier: 1
+      source_type: armor
+      activation_source: equipped_armor
+      description: 'Лёгкий доспех разведчика: DEX +1'
+
+miner_suit:
+  name: 'Шахтёрский защитный костюм'
+  description: 'Усиленный рабочий костюм из толстой кожи с металлическими накладками. Стандартная экипировка надзирателей на рудниках Граней. Защищает от взрывов, обвалов и удара заводского инструмента.'
+  phys_def_bonus: 2
+  str_requirement: 4
+  price: 10

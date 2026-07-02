@@ -1,0 +1,5 @@
+id: wilderness
+label: 'Дикие земли'
+description: 'Путешествие по трактам и лесам'
+goal_hint: 'Добраться до цели пути, пережив опасности диких земель'
+icon: 'wilderness.png'

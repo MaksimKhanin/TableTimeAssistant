@@ -1,0 +1,191 @@
+# Оружие (манифест §14). Ключ верхнего уровня = стабильный id карточки.
+# effects — вложенный список Effect (owned child), поля совпадают с колонками
+# модели Effect; target/source_type/activation_source — строковые значения
+# enum'ов из grokhanika/enums.py.
+
+dagger:
+  name: 'Кинжал'
+  description: 'Лёгкий клинок — самое распространённое оружие в гетто Нижних Граней и подворотнях Аники. Незаметен под плащом, смертоносен вблизи.'
+  damage_dice: '1d6'
+  price: 5
+
+short_sword:
+  name: 'Короткий меч'
+  description: 'Штатный клинок стражников среднего ранга и армейских пехотинцев. Надёжен, но немного сковывает реакцию.'
+  damage_dice: '1d8'
+  str_requirement: 5
+  price: 10
+  effects:
+    - target_type: stat
+      target: dexterity
+      modifier: -1
+      source_type: weapon
+      activation_source: equipped_weapon
+      description: 'Короткий меч: DEX -1'
+
+greataxe:
+  name: 'Двуручный топор'
+  description: 'Топор орков-рабочих, переделанный в боевое оружие. Требует богатырской силы — Гро с ним управляются лучше, чем люди.'
+  damage_dice: '2d8'
+  str_requirement: 8
+  price: 15
+  effects:
+    - target_type: stat
+      target: dexterity
+      modifier: -3
+      source_type: weapon
+      activation_source: equipped_weapon
+      description: 'Двуручный топор: DEX -3'
+
+staff:
+  name: 'Посох'
+  description: 'Деревянный шест. В центральных Гранях — оружие неудачника. В руках шамана с севера или мага из Тенелесья — орудие концентрации силы.'
+  damage_dice: '1d4'
+  price: 5
+  effects:
+    - target_type: stat
+      target: wisdom
+      modifier: 2
+      source_type: weapon
+      activation_source: equipped_weapon
+      description: 'Посох: WIS +2'
+
+bow:
+  name: 'Лук'
+  description: 'Традиционное оружие следопытов Тенелесья и охотников Вьюжных Пределов. В промышленной Грани уступил место арбалету, но в лесу ему нет равных.'
+  damage_dice: '1d8'
+  dex_requirement: 7
+  price: 8
+  is_ranged: true
+  effects:
+    - target_type: stat
+      target: dexterity
+      modifier: 2
+      source_type: weapon
+      activation_source: equipped_weapon
+      description: 'Лук: DEX +2'
+
+crossbow:
+  name: 'Арбалет'
+  description: 'Стандартное оружие городской стражи Аники и гарнизонов Пепельного Дозора. Мощный, надёжный, не требует годов обучения — именно то, что нужно рядовому солдату.'
+  damage_dice: '1d8'
+  str_requirement: 7
+  price: 10
+  is_ranged: true
+  effects:
+    - target_type: stat
+      target: dexterity
+      modifier: 2
+      source_type: weapon
+      activation_source: equipped_weapon
+      description: 'Арбалет: DEX +2'
+
+homing_bow:
+  name: 'Лук с самонаводящимися стрелами'
+  description: 'Артефакт из глубин Тенелесья: зачарованные стрелы сами находят цель. Игнорируют Бастион и бьют любую видимую цель. Лесные маги продают такие редко и неохотно.'
+  damage_dice: '1d8'
+  dex_requirement: 7
+  price: 12
+  is_ranged: true
+  is_unique: true
+  effects:
+    - target_type: stat
+      target: dexterity
+      modifier: 2
+      source_type: weapon
+      activation_source: equipped_weapon
+      description: 'Лук с самонаведением: DEX +2'
+    - target_type: attr
+      target: ignore_bastion
+      modifier: 0
+      source_type: weapon
+      activation_source: equipped_weapon
+      description: 'Самонаводящиеся стрелы: игнорируют Бастион'
+
+spear:
+  name: 'Копьё'
+  description: 'Длинное древковое оружие — хороший баланс досягаемости и урона. Предпочитают северные кланы и ополченцы из резерваций Гро.'
+  damage_dice: '1d6'
+  str_requirement: 4
+  price: 6
+  effects:
+    - target_type: stat
+      target: strength
+      modifier: 2
+      source_type: weapon
+      activation_source: equipped_weapon
+      description: 'Копьё: STR +2'
+
+club:
+  name: 'Дубина'
+  description: 'Любимое оружие орков-рабочих в гетто. Дёшево, просто, сердито — и всегда под рукой в виде рукоятки от шахтного инструмента.'
+  damage_dice: '1d6'
+  price: 3
+  effects:
+    - target_type: stat
+      target: dexterity
+      modifier: -1
+      source_type: weapon
+      activation_source: equipped_weapon
+      description: 'Дубина: DEX -1'
+
+battle_axe:
+  name: 'Боевой топор'
+  description: 'Переделка шахтёрского инструмента в боевое оружие — распространена среди бандитов и бойцов подполья. Наносит серьёзные повреждения.'
+  damage_dice: '1d10'
+  str_requirement: 7
+  price: 7
+  effects:
+    - target_type: stat
+      target: dexterity
+      modifier: -2
+      source_type: weapon
+      activation_source: equipped_weapon
+      description: 'Боевой топор: DEX -2'
+
+halberd:
+  name: 'Бердыш'
+  description: 'Тяжёлое церемониальное оружие элитных частей стражи Аники — им вооружены ворота дворца и штаб-квартиры Совета. Разрушительный урон ценой чудовищной неповоротливости.'
+  damage_dice: '2d10'
+  str_requirement: 9
+  price: 14
+  effects:
+    - target_type: stat
+      target: dexterity
+      modifier: -4
+      source_type: weapon
+      activation_source: equipped_weapon
+      description: 'Бердыш: DEX -4'
+
+steam_pistol:
+  name: 'Стим-пистолет'
+  description: 'Контрабандное огнестрельное оружие на паровых зарядах. Стреляет разрывными капсулами с оглушительным треском. Незаконно на всей территории империи — на чёрном рынке Аники стоит как недельный заработок заводского мастера. Засветиться с ним — прямая дорога в тюрьму.'
+  damage_dice: '2d6'
+  str_requirement: 5
+  price: 25
+  is_ranged: true
+  is_unique: true
+  effects:
+    - target_type: stat
+      target: dexterity
+      modifier: 1
+      source_type: weapon
+      activation_source: equipped_weapon
+      description: 'Стим-пистолет: DEX +1'
+
+steam_rifle:
+  name: 'Стим-винтовка'
+  description: 'Огнестрельное оружие на паровых зарядах. Стреляет разрывными капсулами с оглушительным треском. На чёрном рынке Аники стоит как недельный заработок заводского мастера.'
+  damage_dice: '2d8'
+  str_requirement: 6
+  dex_requirement: 5
+  price: 35
+  is_ranged: true
+  is_unique: true
+  effects:
+    - target_type: stat
+      target: dexterity
+      modifier: 2
+      source_type: weapon
+      activation_source: equipped_weapon
+      description: 'Стим-винтовка: DEX +2'

@@ -1,0 +1,14 @@
+# Инструменты: предметы, дающие навык, пока в инвентаре (§6, §10).
+# grants_skill — ссылка (по id) на карточку в skills.yaml.
+
+inspiring_lute:
+  name: 'Лютня вдохновения'
+  description: 'Даёт навык «Песнь храбрости», пока в инвентаре'
+  price: 12
+  grants_skill: skill_battle_song
+
+war_drum:
+  name: 'Барабан войны'
+  description: 'Даёт навык «Гром деморализации», пока в инвентаре'
+  price: 12
+  grants_skill: skill_war_cry

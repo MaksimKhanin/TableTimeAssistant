@@ -65,8 +65,12 @@ def create_app(
 
     # модуль текстового приключения (ИИ-ГМ): отдельный blueprint с тем же /api
     from ..adventure.adventure_api import adventure_api
+    from ..adventure.presets import sync_adventure_icons
 
     app.register_blueprint(adventure_api)
+
+    # иконки приключений-пресетов — не карточки БД, синк не завязан на seed
+    sync_adventure_icons()
 
     @app.route("/")
     def index():

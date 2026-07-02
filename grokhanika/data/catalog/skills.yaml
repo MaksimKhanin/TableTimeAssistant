@@ -1,0 +1,120 @@
+# Навыки — выученные постоянные способности персонажа (см. Skill в models.py).
+# Не занимают слот инвентаря, не продаются. Ссылки на них (grants_skill/
+# teaches_skill) задаются со стороны предмета/тома/инструмента.
+
+skill_magic_arrows:
+  name: 'Навык «Магические стрелы»'
+  description: 'Выучен из тома. Постоянно: персонаж кастует залп магических стрел.'
+  is_passive: false
+  price: 12
+  spell_name: 'Магические стрелы'
+  damage_dice: '4d4'
+  difficulty: 10
+  attack_stat: wisdom
+
+skill_battle_song:
+  name: 'Навык «Песнь храбрости»'
+  description: 'Активный навык: на своём ходу воодушевляет всю партию.'
+  is_passive: false
+  price: 12
+  abilities:
+    - name: 'Песнь храбрости'
+      description: 'Бафф всех сопартийцев: +2 ко всем d20 на 3 раунда'
+      trigger: active
+      once_per_combat: true
+      actions:
+        - type: buff_allies
+          effect:
+            target_type: attr
+            target: all_d20_rolls
+            modifier: 2
+            duration: 3
+            source_type: item
+            description: 'Воодушевление: +2 ко всем d20'
+
+skill_war_cry:
+  name: 'Навык «Гром деморализации»'
+  description: 'Активный навык: на своём ходу деморализует всех врагов.'
+  is_passive: false
+  price: 12
+  abilities:
+    - name: 'Гром деморализации'
+      description: 'Дебафф всех врагов: -2 к броскам атаки на 3 раунда'
+      trigger: active
+      once_per_combat: true
+      actions:
+        - type: debuff_enemies
+          effect:
+            target_type: attr
+            target: all_attack_rolls
+            modifier: -2
+            duration: 3
+            source_type: item
+            description: 'Деморализация: -2 к атакам'
+
+skill_bastion:
+  name: 'Навык «Бастион»'
+  description: 'Пассивный навык: пока носитель жив, враг не может одиночной атакой выбрать другую цель — сначала нужно убить всех носителей Бастиона.'
+  is_passive: true
+  price: 15
+  effects:
+    - target_type: attr
+      target: bastion
+      modifier: 0
+      source_type: item
+      activation_source: in_inventory
+      description: 'Бастион: держит строй (taunt)'
+
+skill_iron_skin:
+  name: 'Навык «Железная кожа»'
+  description: 'Пассивный навык: постоянно +2 к физической защите.'
+  is_passive: true
+  price: 10
+  effects:
+    - target_type: attr
+      target: phys_defense
+      modifier: 2
+      source_type: item
+      activation_source: in_inventory
+      description: 'Железная кожа: +2 к физзащите (пассивный навык)'
+
+skill_fireball:
+  name: 'Навык «Огненный шар»'
+  description: 'Выученный навык. Маг кастует взрыв: основная цель получает полный урон, все остальные враги — AoE-взрыв.'
+  is_passive: false
+  price: 18
+  spell_name: 'Огненный шар'
+  damage_dice: '2d6'
+  aoe_damage_dice: '1d6'
+  difficulty: 9
+  attack_stat: wisdom
+
+skill_magic_ray:
+  name: 'Навык «Магический луч»'
+  description: 'Выучен из тома. Постоянно: персонаж кастует концентрированный луч силы.'
+  is_passive: false
+  price: 10
+  spell_name: 'Магический луч'
+  damage_dice: '1d10'
+  difficulty: 8
+  attack_stat: wisdom
+
+skill_lightning:
+  name: 'Навык «Молния»'
+  description: 'Выучен из тома. Постоянно: персонаж наносит мощнейший молниеносный удар.'
+  is_passive: false
+  price: 18
+  spell_name: 'Молния'
+  damage_dice: '1d12'
+  difficulty: 10
+  attack_stat: wisdom
+
+skill_frost_sphere:
+  name: 'Навык «Сфера холода»'
+  description: 'Выучен из тома. Постоянно: персонаж кастует тяжёлый шар льда.'
+  is_passive: false
+  price: 15
+  spell_name: 'Сфера холода'
+  damage_dice: '1d10'
+  difficulty: 9
+  attack_stat: wisdom

@@ -1,0 +1,511 @@
+# Архетипы существ/NPC (манифест §13). Защиты задаются напрямую, не через DEX.
+
+# ── обычные люди ──
+peasant:
+  name: 'Крестьянин'
+  description: 'Мирный житель деревни с вилами. Лёгкая цель, но в толпе опасен.'
+  is_sentient: true
+  hp: 5
+  dexterity: 3
+  phys_defense: 6
+  mag_defense: 1
+  mental_defense: 5
+  phys_damage_dice: '1d4'
+  strength: 2
+  charisma: 2
+  wisdom: 2
+
+townsperson:
+  name: 'Горожанин'
+  description: 'Городской житель, способный постоять за себя. Можно запугать или убедить.'
+  is_sentient: true
+  hp: 6
+  dexterity: 4
+  phys_defense: 7
+  mag_defense: 2
+  mental_defense: 6
+  phys_damage_dice: '1d4'
+  strength: 3
+  charisma: 4
+  wisdom: 3
+
+peasant_mob:
+  name: 'Толпа крестьян'
+  description: 'Минимум пять крестьян с вилами и факелами. Слабы поодиночке, но вместе ломают всё.'
+  is_sentient: true
+  hp: 35
+  dexterity: 2
+  phys_defense: 5
+  mag_defense: 1
+  mental_defense: 8
+  phys_damage_dice: '3d4'
+  strength: 5
+  charisma: 1
+  wisdom: 1
+
+city_mob:
+  name: 'Толпа горожан'
+  description: 'Пять-восемь разъярённых горожан — опасны числом, остановить словом крайне трудно.'
+  is_sentient: true
+  hp: 35
+  dexterity: 3
+  phys_defense: 6
+  mag_defense: 2
+  mental_defense: 9
+  phys_damage_dice: '3d6'
+  strength: 5
+  charisma: 2
+  wisdom: 2
+
+# ── стражники и воины ──
+city_guard:
+  name: 'Городской стражник Аники'
+  description: 'Рядовой стражи Аники — хорошо обучен, действует по уставу. Большинство — честные служаки. Среди них, однако, немало тайных членов Культа Бурь: распознать таких можно по серебряному значку под воротником.'
+  is_sentient: true
+  hp: 12
+  dexterity: 5
+  phys_defense: 10
+  mag_defense: 3
+  mental_defense: 7
+  phys_damage_dice: '1d8'
+  strength: 6
+  charisma: 4
+  wisdom: 4
+
+bandit:
+  name: 'Бандит'
+  description: 'Лесной разбойник, промышляющий грабежом. Беспощаден, но сдаётся при превосходстве.'
+  is_sentient: true
+  hp: 10
+  dexterity: 6
+  phys_defense: 9
+  mag_defense: 2
+  mental_defense: 6
+  phys_damage_dice: '1d8'
+  strength: 5
+  charisma: 3
+  wisdom: 3
+
+highwayman:
+  name: 'Разбойник с большой дороги'
+  description: 'Быстрый и коварный: атакует из засады и метко стреляет из лука.'
+  is_sentient: true
+  hp: 10
+  dexterity: 8
+  phys_defense: 9
+  mag_defense: 2
+  mental_defense: 7
+  phys_damage_dice: '1d8'
+  strength: 4
+  charisma: 3
+  wisdom: 3
+
+mercenary:
+  name: 'Наёмник'
+  description: 'Опытный наёмный солдат — воюет за деньги, но профессионально и надёжно.'
+  is_sentient: true
+  hp: 14
+  dexterity: 6
+  phys_defense: 11
+  mag_defense: 3
+  mental_defense: 7
+  phys_damage_dice: '1d8'
+  strength: 7
+  charisma: 3
+  wisdom: 3
+
+knight:
+  name: 'Рыцарь'
+  description: 'Закованный в латы рыцарь — лидер отряда, вдохновляющий союзников боевым кличем.'
+  is_sentient: true
+  hp: 20
+  dexterity: 4
+  phys_defense: 14
+  mag_defense: 4
+  mental_defense: 9
+  phys_damage_dice: '1d10'
+  strength: 9
+  charisma: 6
+  wisdom: 5
+  abilities:
+    - name: 'Боевой клич'
+      description: 'Рыцарь воодушевляет союзников: +2 ко всем броскам на 3 раунда'
+      trigger: active
+      once_per_combat: true
+      actions:
+        - type: buff_allies
+          effect:
+            target_type: attr
+            target: all_d20_rolls
+            modifier: 2
+            duration: 3
+            source_type: item
+            description: 'Боевой клич: +2 ко всем броскам'
+
+orc:
+  name: 'Орк'
+  description: 'Рабочий класс Грохании — кто-то после смены на шахте, кто-то из безработных гетто. Физически мощный, умеет злиться. Поодиночке не агрессивен, но легко поддаётся агитации через простые лозунги. С оружием в руках — серьёзная угроза.'
+  is_sentient: true
+  hp: 15
+  dexterity: 5
+  phys_defense: 10
+  mag_defense: 3
+  mental_defense: 7
+  phys_damage_dice: '1d10'
+  strength: 8
+  charisma: 3
+  wisdom: 2
+
+# ── животные ──
+wolf:
+  name: 'Волк'
+  description: 'Лесной хищник — быстр, чуток и опасен в одиночку.'
+  is_sentient: false
+  hp: 10
+  dexterity: 7
+  phys_defense: 9
+  mag_defense: 1
+  mental_defense: 5
+  phys_damage_dice: '1d8'
+  strength: 5
+  charisma: 1
+  wisdom: 3
+
+wolf_pack:
+  name: 'Стая волков'
+  description: 'Пять-шесть волков, действующих как единый хищник: окружают, изматывают, добивают.'
+  is_sentient: false
+  hp: 40
+  dexterity: 6
+  phys_defense: 8
+  mag_defense: 1
+  mental_defense: 4
+  phys_damage_dice: '3d8'
+  strength: 6
+  charisma: 1
+  wisdom: 2
+
+bear:
+  name: 'Медведь'
+  description: 'Огромный лесной медведь — медлительный, но обладает чудовищной силой удара.'
+  is_sentient: false
+  hp: 18
+  dexterity: 5
+  phys_defense: 11
+  mag_defense: 2
+  mental_defense: 6
+  phys_damage_dice: '1d10'
+  strength: 9
+  charisma: 1
+  wisdom: 3
+
+giant_rat:
+  name: 'Гигантская крыса'
+  description: 'Крупная болотная крыса с острыми зубами — чаще встречается группами.'
+  is_sentient: false
+  hp: 4
+  dexterity: 6
+  phys_defense: 6
+  mag_defense: 1
+  mental_defense: 3
+  phys_damage_dice: '1d4'
+  strength: 2
+  charisma: 1
+  wisdom: 2
+
+bat_swarm:
+  name: 'Рой летучих мышей'
+  description: 'Тучи острых зубов — почти невозможно поразить одним ударом, изматывает укусами.'
+  is_sentient: false
+  hp: 12
+  dexterity: 8
+  phys_defense: 7
+  mag_defense: 1
+  mental_defense: 3
+  phys_damage_dice: '1d4'
+  strength: 1
+  charisma: 1
+  wisdom: 2
+
+# ── прочие существа ──
+ogre:
+  name: 'Огр'
+  description: 'Де-факто раб на тяжелейших работах Грани — тягловая сила шахт и строек. Не понимает лозунгов и политики. Его держат в повиновении примитивной магией или обещанием еды. Опасен, если разозлить или обмануть.'
+  is_sentient: true
+  hp: 25
+  dexterity: 3
+  phys_defense: 12
+  mag_defense: 3
+  mental_defense: 5
+  phys_damage_dice: '1d12'
+  strength: 12
+  charisma: 1
+  wisdom: 1
+
+troll:
+  name: 'Тролль'
+  description: 'Рабочий в шахтах и на строительстве — физически мощный, с толстой кожей. Не понимает политики, но реагирует на несправедливость инстинктивно: может взорваться без предупреждения. Говорят, мелкие раны затягиваются у него прямо в бою.'
+  is_sentient: true
+  hp: 20
+  dexterity: 4
+  phys_defense: 11
+  mag_defense: 4
+  mental_defense: 6
+  phys_damage_dice: '1d10'
+  strength: 10
+  charisma: 1
+  wisdom: 2
+
+goblin:
+  name: 'Гоблин'
+  description: 'Маленький зелёный обжитель гетто. Слаб телом, но хитёр умом. Работает курьером, стукачом, мелким контрабандистом — другого выхода в гетто нет. Организован в гоблинскую мафию: самый сплочённый народ среди Гро, выживание сделало их такими.'
+  is_sentient: true
+  hp: 3
+  dexterity: 8
+  phys_defense: 6
+  mag_defense: 2
+  mental_defense: 5
+  phys_damage_dice: '1d4'
+  strength: 1
+  charisma: 3
+  wisdom: 4
+
+assassin:
+  name: 'Теневой убийца'
+  description: 'Профессиональный наёмник из теневого мира Нижних Граней. Специализируется на устранении целей без свидетелей и следов. Работает исключительно по контракту; его цена высока — почти как у стим-пистолета на чёрном рынке.'
+  is_sentient: true
+  is_unique: true
+  hp: 14
+  dexterity: 10
+  phys_defense: 9
+  mag_defense: 4
+  mental_defense: 8
+  phys_damage_dice: '1d6'
+  strength: 4
+  charisma: 6
+  wisdom: 5
+  abilities:
+    - name: 'Удар в сердце'
+      description: 'Точный удар в уязвимое место: при попадании есть шанс мгновенно убить разумную цель'
+      trigger: on_hit
+      chance: 0.25
+      once_per_combat: false
+      condition:
+        target_is_sentient: true
+      actions:
+        - type: instakill
+          chance: 1.0
+
+merchant:
+  name: 'Торговец'
+  description: 'Мирный торговец — беззащитен в схватке, но щедро платит за охрану и сведения.'
+  is_sentient: true
+  hp: 6
+  dexterity: 4
+  phys_defense: 7
+  mag_defense: 2
+  mental_defense: 8
+  phys_damage_dice: '1d4'
+  strength: 2
+  charisma: 8
+  wisdom: 6
+
+cultist:
+  name: 'Адепт Культа Бурь'
+  description: 'Рядовой член тайного Культа Бурь — стражник или солдат, потерявший кого-то от рук революционеров. Искренне верит в «чистоту крови» и «порядок». Серебряная молния под воротником — тайный знак. Слаб телом, но опасен фанатизмом и связями внутри стражи.'
+  is_sentient: true
+  hp: 8
+  dexterity: 4
+  phys_defense: 7
+  mag_defense: 6
+  mental_defense: 9
+  phys_damage_dice: '1d4'
+  strength: 2
+  charisma: 5
+  wisdom: 7
+
+bandit_leader:
+  name: 'Главарь бандитов'
+  description: 'Главарь шайки — опытный боец и командир, поднимающий боевой дух подельников.'
+  is_sentient: true
+  is_unique: true
+  hp: 15
+  dexterity: 7
+  phys_defense: 10
+  mag_defense: 3
+  mental_defense: 8
+  phys_damage_dice: '1d8'
+  strength: 6
+  charisma: 5
+  wisdom: 4
+  abilities:
+    - name: 'Командный рёв'
+      description: 'Главарь орёт на своих: +2 ко всем броскам союзников на 3 раунда'
+      trigger: active
+      once_per_combat: true
+      actions:
+        - type: buff_allies
+          effect:
+            target_type: attr
+            target: all_d20_rolls
+            modifier: 2
+            duration: 3
+            source_type: item
+            description: 'Командный рёв: +2 ко всем броскам'
+
+guard_captain:
+  name: 'Капитан стражи'
+  description: 'Закалённый ветеран стражи — координирует оборону и воодушевляет отряд.'
+  is_sentient: true
+  is_unique: true
+  hp: 18
+  dexterity: 5
+  phys_defense: 12
+  mag_defense: 4
+  mental_defense: 9
+  phys_damage_dice: '1d8'
+  strength: 7
+  charisma: 6
+  wisdom: 5
+  abilities:
+    - name: 'Держать строй'
+      description: 'Капитан укрепляет дисциплину: +2 ко всем броскам стражников на 3 раунда'
+      trigger: active
+      once_per_combat: true
+      actions:
+        - type: buff_allies
+          effect:
+            target_type: attr
+            target: all_d20_rolls
+            modifier: 2
+            duration: 3
+            source_type: item
+            description: 'Держать строй: +2 ко всем броскам'
+
+shaman:
+  name: 'Шаман'
+  description: 'Духовный лидер кланов Вьюжных Пределов. Общается с духами предков, льда и ветра. В центральных Гранях их считают «дикарями», но в своих землях они — настоящая власть. Ослабляет врагов проклятием духов.'
+  is_sentient: true
+  hp: 12
+  dexterity: 4
+  phys_defense: 8
+  mag_defense: 7
+  mental_defense: 8
+  phys_damage_dice: '1d4'
+  strength: 3
+  charisma: 6
+  wisdom: 9
+  abilities:
+    - name: 'Проклятие духов'
+      description: 'Шаман насылает духов: -2 к атакам всех врагов на 3 раунда'
+      trigger: active
+      once_per_combat: true
+      actions:
+        - type: debuff_enemies
+          effect:
+            target_type: attr
+            target: all_attack_rolls
+            modifier: -2
+            duration: 3
+            source_type: spell
+            description: 'Проклятие духов: -2 к атакам'
+
+witch:
+  name: 'Ведьма'
+  description: 'Одинокая ведьма — владеет тёмными чарами и сглазом, опасна с расстояния.'
+  is_sentient: true
+  is_unique: true
+  hp: 14
+  dexterity: 5
+  phys_defense: 8
+  mag_defense: 9
+  mental_defense: 10
+  phys_damage_dice: '1d4'
+  strength: 2
+  charisma: 6
+  wisdom: 11
+  abilities:
+    - name: 'Сглаз'
+      description: 'Ведьма насылает сглаз: -2 к броскам атаки всех врагов на 3 раунда'
+      trigger: active
+      once_per_combat: true
+      actions:
+        - type: debuff_enemies
+          effect:
+            target_type: attr
+            target: all_attack_rolls
+            modifier: -2
+            duration: 3
+            source_type: spell
+            description: 'Сглаз: -2 к атакам'
+
+stone_golem:
+  name: 'Каменный голем'
+  description: 'Магически оживлённый страж из камня — скорее всего артефакт времён Великого Синтеза или охрана древнего хранилища Анхари. Медленен, но практически неуязвим физически. На чёрном рынке за картой к такому хранилищу дают целое состояние.'
+  is_sentient: false
+  hp: 35
+  dexterity: 2
+  phys_defense: 16
+  mag_defense: 6
+  mental_defense: 20
+  phys_damage_dice: '1d10'
+  strength: 12
+  charisma: 1
+  wisdom: 1
+
+# ── NPC ──
+revolutionary:
+  name: 'Революционер'
+  description: 'Боевик революционного подполья — орк или грохонец с личным счётом к власти. Обучен азам тактики подпольной борьбы: засады, саботаж, баррикады. Опасен фанатизмом и готовностью умереть за лозунг «Гро — едины!».'
+  is_sentient: true
+  hp: 12
+  dexterity: 6
+  phys_defense: 9
+  mag_defense: 2
+  mental_defense: 9
+  phys_damage_dice: '1d8'
+  strength: 6
+  charisma: 4
+  wisdom: 3
+
+ash_zombie:
+  name: 'Пепельный зомби'
+  description: 'Нежить Пустыни Смерти — безликая гуманоидная фигура из пепла и костей. Порождена душами погибших Анхари. Из пустых глазниц сыплется пепел. Медленная, но неостановимая. Один — не проблема; толпа из сотен — катастрофа.'
+  is_sentient: false
+  hp: 10
+  dexterity: 2
+  phys_defense: 7
+  mag_defense: 1
+  mental_defense: 20
+  phys_damage_dice: '1d6'
+  strength: 5
+  charisma: 1
+  wisdom: 1
+
+ash_ghoul:
+  name: 'Пепельный упырь'
+  description: 'Нежить Пустыни Смерти — тощее, непропорционально высокое существо с длинными руками и ногами. Кожа из спечённого пепла и костей. Быстрое, охотится стаями, взбирается по отвесным стенам и бортам наземных кораблей.'
+  is_sentient: false
+  hp: 8
+  dexterity: 9
+  phys_defense: 8
+  mag_defense: 2
+  mental_defense: 20
+  phys_damage_dice: '1d8'
+  strength: 4
+  charisma: 1
+  wisdom: 2
+
+npc_innkeeper:
+  name: 'Трактирщик'
+  description: 'Хозяин таверны в Нижних или Средних Гранях: наливает мутное эль, сдаёт комнаты и охотно делится новостями и сплетнями за пару монет. Одним ухом слышит всё — одним глазом видит, чего лучше не замечать.'
+  is_sentient: true
+  hp: 8
+  dexterity: 3
+  phys_defense: 9
+  mag_defense: 2
+  mental_defense: 6
+  phys_damage_dice: '1d4'
+  strength: 4
+  charisma: 7
+  wisdom: 5

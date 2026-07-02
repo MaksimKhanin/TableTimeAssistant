@@ -203,6 +203,19 @@ def test_battle_resolve_stream_narrates_and_returns_scene(client):
     assert "Гоблин" not in npc_names
 
 
+def test_reindex_embeddings_stream_reports_progress(client):
+    c, _factory, _holder = client
+    resp = c.post("/api/adventure/reindex-embeddings")
+    assert resp.status_code == 200
+    frames = _frames(resp)
+    types = [f["type"] for f in frames]
+    assert types[0] == "start"
+    assert "progress" in types
+    assert types[-1] == "done"
+    total = frames[0]["total"]
+    assert frames[-1]["count"] == total
+
+
 def test_settings_get_put(client):
     c, _factory, _holder = client
     cfg = c.get("/api/adventure/settings").get_json()

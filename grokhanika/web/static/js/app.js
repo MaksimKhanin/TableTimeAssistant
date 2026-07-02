@@ -2248,6 +2248,42 @@ $$(".llm-chip").forEach(chip => {
 $("#llm-save").onclick = saveLLMSettings;
 $("#llm-test").onclick = testLLMSettings;
 
+async function runReindex() {
+  const btn = $("#reindex-btn");
+  const wrap = $("#reindex-progress");
+  const fill = $("#reindex-progress-fill");
+  const label = $("#reindex-progress-label");
+  if (btn.disabled) return;
+  btn.disabled = true;
+  wrap.classList.remove("hidden");
+  fill.style.width = "0%";
+  label.textContent = "Запуск…";
+  try {
+    await streamSSE("/api/adventure/reindex-embeddings", { method: "POST" }, (ev) => {
+      if (ev.type === "start") {
+        label.textContent = `0 / ${ev.total}`;
+      } else if (ev.type === "progress") {
+        const pct = ev.total ? Math.round((ev.done / ev.total) * 100) : 0;
+        fill.style.width = pct + "%";
+        label.textContent = `${ev.done} / ${ev.total} — ${ev.name}`;
+      } else if (ev.type === "done") {
+        fill.style.width = "100%";
+        label.textContent = `Готово: проиндексировано ${ev.count}`;
+        toast(`Переиндексация завершена: ${ev.count} карточек`);
+      } else if (ev.type === "error") {
+        label.textContent = "Ошибка: " + ev.error;
+        toast("Переиндексация: " + ev.error, true);
+      }
+    });
+  } catch (e) {
+    label.textContent = "Прервано: " + e.message;
+    toast("Переиндексация прервана: " + e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+$("#reindex-btn").onclick = runReindex;
+
 // ═════════════════════════ Изображения (арт карточек) ═════════════════════════
 
 const IMAGE_FIELDS = ["base_url", "model", "api_key", "size", "style_prompt"];
@@ -2332,7 +2368,8 @@ function renderPresets() {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "adv-preset" + ((advState.type === p.id || (i === 0 && advState.type === "custom" && p.id === "custom")) ? " active" : "");
-    b.innerHTML = `<b>${advEsc(p.label)}</b><span>${advEsc(p.description)}</span>`;
+    const icon = p.icon_url ? `<img class="adv-preset-icon" src="${advEsc(p.icon_url)}" alt="">` : "";
+    b.innerHTML = `${icon}<b>${advEsc(p.label)}</b><span>${advEsc(p.description)}</span>`;
     b.onclick = () => {
       advState.type = p.id;
       $$("#adv-presets .adv-preset").forEach(x => x.classList.remove("active"));

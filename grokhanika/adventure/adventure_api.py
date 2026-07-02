@@ -27,6 +27,7 @@ from ..db.models import AdventureSession
 from . import config, scene
 from . import session as advsession
 from .llm import LLMClient
+from .presets import load_presets
 from ..web.serialize import serialize_card
 
 adventure_api = Blueprint("adventure", __name__, url_prefix="/api")
@@ -34,16 +35,6 @@ adventure_api = Blueprint("adventure", __name__, url_prefix="/api")
 
 def _session():
     return g.session
-
-
-# пресеты типов приключения (+ «своё»)
-PRESETS = [
-    {"id": "dungeon", "label": "Подземелье", "description": "Зачистка подземелья или древних руин"},
-    {"id": "city", "label": "Город", "description": "Городские интриги, торг и расследования"},
-    {"id": "wilderness", "label": "Дикие земли", "description": "Путешествие по трактам и лесам"},
-    {"id": "mystery", "label": "Тайна", "description": "Детектив: раскрыть загадку или заговор"},
-    {"id": "custom", "label": "Своё", "description": "Опишите тип приключения свободно"},
-]
 
 
 # ───────────────────────── сериализация ─────────────────────────
@@ -113,7 +104,7 @@ def _stream_response(work) -> Response:
 
 @adventure_api.get("/adventure/presets")
 def presets():
-    return jsonify(PRESETS)
+    return jsonify(load_presets())
 
 
 @adventure_api.get("/adventure/list")
@@ -239,6 +230,24 @@ def settings_test():
         )
         result[role] = client.health_check()
     return jsonify(result)
+
+
+@adventure_api.post("/adventure/reindex-embeddings")
+def reindex_embeddings():
+    """SSE-поток переиндексации эмбеддингов (кнопка «Переиндексировать» в LLM/RAG)."""
+
+    def work(session):
+        try:
+            from . import retrieval
+        except Exception as exc:  # noqa: BLE001 - например, не установлен sentence-transformers
+            yield {"type": "error", "error": f"эмбеддер недоступен: {exc}"}
+            return
+        try:
+            yield from retrieval.reindex_iter(session)
+        except Exception as exc:  # noqa: BLE001 - не рвём поток молча
+            yield {"type": "error", "error": str(exc)}
+
+    return _stream_response(work)
 
 
 # ───────────────────────── лор-база (CRUD) ─────────────────────────

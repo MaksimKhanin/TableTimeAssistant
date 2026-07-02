@@ -1,10 +1,9 @@
-"""Подбор противников для боя из каталога существ/персонажей по интенту (RAG).
+"""Мост между намерением игрока (интент-анализ) и боевым движком.
 
-Сам бой ведёт ``web.simulation`` поверх ``engine.combat`` (см. ``session.py``) —
-этот модуль только находит подходящую карточку-противника по
-``intent.enemy_query`` и разворачивает её в список нужной длины
-(``intent.enemy_count``): бой ждёт ``enemy_ids`` как список id по одному на
-участника, повтор id — это несколько экземпляров одной и той же карточки.
+Подбирает карточки противников из каталога по RAG-запросу системной LLM —
+единственная новая бизнес-логика моста. Сам бой ведётся существующим
+``web.simulation`` (``start_interactive``/``submit_action``) поверх ``engine.combat`` —
+здесь ничего не дублируется.
 """
 from __future__ import annotations
 
@@ -14,24 +13,48 @@ from ..db.models import AdventureSession, Card
 from ..enums import CardType
 from .intent import Intent
 
-_ENEMY_TYPES = (CardType.CREATURE.value, CardType.CHARACTER.value)
-_MAX_ENEMIES = 8
+_ENEMY_CARD_TYPES = (CardType.CREATURE.value, CardType.CHARACTER.value)
+_DEFAULT_ENEMY_COUNT = 2
+_MIN_ENEMIES = 1
+_MAX_ENEMIES = 6
 
 
 def select_enemies(session: Session, adv: AdventureSession, intent: Intent) -> list[Card]:
-    """Найти карточку противника по интенту и повторить её под ``enemy_count``.
+    """Подобрать карточки противников для намерения ``combat_initiation``.
 
-    Возвращает пустой список, если запрос пуст или ничего похожего не нашлось
-    (в этом случае бой не начинается — см. ``prompts.enrichment_for``).
+    RAG-поиск (``retrieval.semantic_search``) по ``intent.enemy_query`` с фолбэком на
+    общие ``search_queries`` интента, если системная LLM не указала запрос отдельно.
+    Игровые персонажи партии исключаются. При недоступном эмбеддере/пустом каталоге —
+    безопасный пустой результат (бой не стартует, см. ``prompts.enrichment_for``).
     """
-    query = intent.enemy_query.strip()
+    try:
+        from . import retrieval
+    except Exception:  # noqa: BLE001 - модуль приключения/эмбеддер недоступны
+        return []
+
+    query = intent.enemy_query.strip() or " ".join(intent.search_queries).strip()
     if not query:
         return []
-    from . import retrieval
 
-    hits = retrieval.semantic_search(session, query, card_types=_ENEMY_TYPES, top_k=5)
-    card = next((h["card"] for h in hits if not getattr(h["card"], "is_player", False)), None)
-    if card is None:
+    count = intent.enemy_count if intent.enemy_count > 0 else _DEFAULT_ENEMY_COUNT
+    count = max(_MIN_ENEMIES, min(count, _MAX_ENEMIES, 2 * max(len(adv.party), 1)))
+
+    try:
+        hits = retrieval.semantic_search(
+            session, query, card_types=list(_ENEMY_CARD_TYPES), top_k=count * 2
+        )
+    except Exception:  # noqa: BLE001 - эмбеддер недоступен → без боя, только нарратив
         return []
-    count = max(1, min(intent.enemy_count or 1, _MAX_ENEMIES))
-    return [card] * count
+
+    party_ids = {c.id for c in adv.party}
+    candidates: list[Card] = []
+    seen: set[int] = set()
+    for hit in hits:
+        card = hit["card"]
+        if card.id in seen or card.id in party_ids or getattr(card, "is_player", False):
+            continue
+        seen.add(card.id)
+        candidates.append(card)
+        if len(candidates) >= count:
+            break
+    return candidates
