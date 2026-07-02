@@ -99,8 +99,33 @@ def test_start_adventure_sets_prompt_and_party(env):
     assert "Найти заказчика" in adv.system_prompt
 
 
-def test_intro_grounds_location_and_persists(env):
-    sess, narrator, _holder = env
+def _pin_gorozhanin_on_npc_search(monkeypatch):
+    """Заставить поиск NPC детерминированно находить «Горожанин» (без опоры на то, как
+    грубый тестовый bag-of-words эмбеддер разрешает точные ничьи score между близкими
+    карточками — это забота test_retrieval.py, а не логики оркестрации сцены)."""
+    from grokhanika.adventure import retrieval
+    from grokhanika.db.models import Creature
+
+    real_search = retrieval.semantic_search
+
+    def fake_search(session, query, *, card_types=None, **kwargs):
+        if card_types:
+            card = session.query(Creature).filter(Creature.name == "Горожанин").one()
+            return [{"card": card, "score": 0.9}]
+        return real_search(session, query, card_types=card_types, **kwargs)
+
+    monkeypatch.setattr(retrieval, "semantic_search", fake_search)
+
+
+def test_intro_grounds_location_and_persists(env, monkeypatch):
+    sess, narrator, holder = env
+    _pin_gorozhanin_on_npc_search(monkeypatch)
+    # локация/начальные NPC решаются детерминированно интент-анализатором (не RAG-поиском)
+    holder["intent"] = {
+        "location_name": "Импродор",
+        "location_description": "Торговый город на перекрёстке дорог",
+        "npc_mentions": [{"query": "горожанин", "count": 2}],
+    }
     adv = advsession.start_adventure(
         sess,
         description="Партия прибывает в торговый Импродор",
@@ -113,20 +138,27 @@ def test_intro_grounds_location_and_persists(env):
 
     # вводная сохранена как сообщение ГМ
     assert any(m.role == "gm" for m in adv.messages)
-    # локация Импродор закреплена в сцене (заземление по описанию)
+    # локация закреплена свободным текстом, не карточкой каталога
     scene_data = scene.serialize_scene(adv)
     assert scene_data["location"] is not None
     assert scene_data["location"]["name"] == "Импродор"
+    npc_names = [n["name"] for n in scene_data["npcs"]]
+    assert "Горожанин" in npc_names
+    assert next(n["count"] for n in scene_data["npcs"] if n["name"] == "Горожанин") == 2
 
 
-def test_play_turn_grounds_npc_and_location(env):
+def test_play_turn_grounds_npc_and_location(env, monkeypatch):
     sess, narrator, holder = env
+    _pin_gorozhanin_on_npc_search(monkeypatch)
     adv = advsession.start_adventure(
         sess, description="город", character_ids=_party_ids(sess), goal="дела"
     )
     holder["intent"] = {
         "intent_type": "movement",
         "leaves_location": True,
+        "location_name": "Импродор",
+        "location_description": "город",
+        "npc_mentions": [{"query": "горожанин", "count": 1}],
         "search_queries": ["город", "горожане"],
     }
     events = list(advsession.play_turn(sess, adv, adv.party[0].id, "иду в город к горожанам"))

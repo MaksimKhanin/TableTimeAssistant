@@ -2169,7 +2169,7 @@ const LLM_FIELDS = {
   narrator: ["base_url", "model", "api_key", ...LLM_GEN_FIELDS],
   system: ["base_url", "model", "api_key", ...LLM_GEN_FIELDS],
   embedder: ["model"],
-  memory: ["window_messages", "compact_threshold", "episodic_top_k", "retrieval_top_k"],
+  memory: ["window_messages", "compact_threshold", "episodic_top_k", "retrieval_top_k", "retrieval_min_score"],
 };
 
 let _llmLoaded = false;
@@ -2606,7 +2606,8 @@ function sceneCard(card) {
   const style = card.image_url
     ? `background-image:url('${card.image_url}');background-size:cover;background-position:center`
     : `background:${ART_BG[card.card_type] || "#2c2a3a"}`;
-  div.innerHTML = `<div class="adv-sc-art" style="${style}">${card.image_url ? "" : ico}</div>` +
+  const count = Number(card.count) > 1 ? `<div class="adv-sc-count">×${card.count}</div>` : "";
+  div.innerHTML = `<div class="adv-sc-art" style="${style}">${card.image_url ? "" : ico}${count}</div>` +
     `<div class="adv-sc-name">${advEsc(card.name)}</div>`;
   div.title = card.description || card.name;
   return div;
@@ -2615,15 +2616,15 @@ function sceneCard(card) {
 function renderScene(scene) {
   if (!scene) return;
   const loc = $("#adv-scene-loc");
-  loc.innerHTML = "";
-  if (scene.location) loc.appendChild(sceneCard(scene.location));
-  else loc.innerHTML = '<span class="muted">—</span>';
+  if (scene.location) {
+    loc.innerHTML = `<div class="adv-sc-loc-name">${advEsc(scene.location.name)}</div>` +
+      (scene.location.description ? `<div class="adv-sc-loc-desc">${advEsc(scene.location.description)}</div>` : "");
+  } else {
+    loc.innerHTML = '<span class="muted">—</span>';
+  }
   const npcs = $("#adv-scene-npcs"); npcs.innerHTML = "";
   (scene.npcs || []).forEach(c => npcs.appendChild(sceneCard(c)));
   if (!scene.npcs || !scene.npcs.length) npcs.innerHTML = '<span class="muted">—</span>';
-  const items = $("#adv-scene-items"); items.innerHTML = "";
-  (scene.items || []).forEach(c => items.appendChild(sceneCard(c)));
-  if (!scene.items || !scene.items.length) items.innerHTML = '<span class="muted">—</span>';
 }
 
 // ── продолжить (список сессий) ──
@@ -2657,7 +2658,7 @@ const AI_FIELDS = {
   narrator: ["base_url", "model", "api_key", "temperature"],
   system: ["base_url", "model", "api_key", "temperature"],
   embedder: ["model"],
-  memory: ["window_messages", "compact_threshold", "episodic_top_k", "retrieval_top_k"],
+  memory: ["window_messages", "compact_threshold", "episodic_top_k", "retrieval_top_k", "retrieval_min_score"],
 };
 
 async function openSettings() {

@@ -32,10 +32,11 @@ def build_system_prompt(adv: AdventureSession) -> str:
         "Ты — Гейм-мастер (рассказчик) текстовой ролевой игры в тёмном фэнтези-мире Гроханика.\n"
         "Ты ведёшь повествование живо и атмосферно, по-русски, как опытный мастер настольной RPG.\n\n"
         "ЖЁСТКИЕ ПРАВИЛА:\n"
-        "1. НЕ выдумывай новых NPC, существ, предметы, лут и локации. Используй ТОЛЬКО сущности и "
-        "факты из блоков «Контекст сцены» и «Факты мира». Если игрок хочет встретить кого-то или "
-        "найти предмет — опирайся на переданные карточки. Если подходящих данных нет — обыграй "
-        "ситуацию уклончиво, не изобретая конкретных имён/предметов.\n"
+        "1. НЕ выдумывай новых NPC, существ и локаций, отличных от переданных. Используй ТОЛЬКО "
+        "сущности и факты из блоков «Контекст сцены» и «Факты мира». Если в сцене у NPC указано "
+        "количество (например, «(x2)») — держись именно этого числа, не увеличивай и не уменьшай "
+        "его сам. Если подходящих данных нет — обыграй ситуацию уклончиво, не изобретая конкретных "
+        "имён. Предметы/лут сцена не отслеживает — здесь можно свободно и уместно описывать находки.\n"
         "2. Не играй за игровых персонажей партии и не принимай решений за них. Описывай мир, "
         "реакции NPC и последствия действий.\n"
         "3. Когда действие требует проверки или спасброска — обыгрывай НАЧАЛО броска в ролиплее и "
@@ -64,8 +65,15 @@ def intent_system_prompt() -> str:
         '  "roll_type": "краткая метка проверки или пустая строка",\n'
         '  "combat_initiation": true|false,  // игрок начинает бой/атакует\n'
         '  "leaves_location": true|false,    // игрок покидает текущую локацию/перемещается\n'
-        '  "search_queries": ["ключевые сущности/темы для поиска в базе: NPC, существа, предметы, '
-        'локации; 1-4 строки по-русски"],\n'
+        '  "location_name": "название НОВОЙ локации, если сцена перемещается в другое место '
+        '(leaves_location=true); иначе пустая строка — текущая локация не меняется",\n'
+        '  "location_description": "1 фраза описания новой локации; иначе пустая строка",\n'
+        '  "npc_mentions": [{"query": "кто именно появляется в кадре, по-русски, кратко, как для '
+        'поиска в каталоге существ/персонажей", "count": число_таких_NPC_в_кадре}], '
+        "// ТОЛЬКО реально появляющиеся/присутствующие в сцене NPC; если реплика их не подразумевает "
+        "— пустой список\n"
+        '  "search_queries": ["ключевые темы для поиска ФАКТОВ МИРА (лор, история, география); '
+        'НЕ для NPC — 1-4 строки по-русски"],\n'
         '  "enemy_query": "если combat_initiation=true: кого искать в каталоге существ/противников '
         'по контексту сцены (по-русски, кратко); иначе пустая строка",\n'
         '  "enemy_count": число противников, подходящее по контексту (если combat_initiation=true; '
@@ -83,6 +91,29 @@ def intent_user_prompt(history_brief: str, character_name: str, text: str) -> st
     )
 
 
+def opening_system_prompt() -> str:
+    return (
+        "Ты помогаешь Гейм-мастеру задать стартовую сцену текстовой RPG по завязке и цели партии. "
+        "Верни СТРОГО один JSON-объект без пояснений и текста вокруг:\n"
+        "{\n"
+        '  "location_name": "краткое название стартовой локации",\n'
+        '  "location_description": "1 фраза описания места",\n'
+        '  "npc_mentions": [{"query": "кто присутствует изначально, по-русски, кратко, как для '
+        'поиска в каталоге существ/персонажей", "count": число_таких_NPC}]\n'
+        "}\n"
+        "Если по завязке нет явных начальных NPC — верни пустой список npc_mentions. Верни только "
+        "JSON."
+    )
+
+
+def opening_user_prompt(description: str, goal: str) -> str:
+    return (
+        f"Завязка (от игроков): {description or '—'}\n"
+        f"Главная цель партии: {goal or '—'}\n\n"
+        "Задай стартовую локацию и (если применимо) начальных NPC."
+    )
+
+
 # ───────────────────────── контекст хода (динамика) ─────────────────────────
 
 
@@ -94,31 +125,35 @@ def _facts_block(title: str, cards: Iterable[Card]) -> str:
 def build_context_block(
     *,
     running_summary: str,
-    location: Optional[Card],
-    npcs: Iterable[Card],
-    items: Iterable[Card],
+    location: Optional[dict],
+    npcs: Iterable[dict],
     lore_facts: Iterable[Card],
     episodic: Iterable[str],
     enrichment: str,
 ) -> str:
-    """Собрать динамический блок контекста для текущего хода ГМ."""
+    """Собрать динамический блок контекста для текущего хода ГМ.
+
+    ``location`` — свободный текст ``{"name", "description"}`` (без привязки к
+    карточкам). ``npcs`` — ``[{"card": Card, "count": int}]``: количество
+    зафиксировано детерминированно интент-анализатором, ГМ должен ему следовать.
+    """
     blocks: list[str] = []
     if running_summary.strip():
         blocks.append(f"## Журнал кампании (что было ранее)\n{running_summary.strip()}")
 
     scene_lines = []
-    if location is not None:
-        scene_lines.append(f"Локация: {location.name} — {(location.description or '').strip()}")
+    if location:
+        scene_lines.append(f"Локация: {location['name']} — {(location.get('description') or '').strip()}")
     npc_list = list(npcs)
     if npc_list:
         scene_lines.append("Действующие лица:")
-        scene_lines += [f"- {c.name}: {(c.description or '').strip()}" for c in npc_list]
-    item_list = list(items)
-    if item_list:
-        scene_lines.append("Предметы в сцене:")
-        scene_lines += [f"- {c.name}: {(c.description or '').strip()}" for c in item_list]
+        for entry in npc_list:
+            card = entry["card"]
+            count = int(entry.get("count", 1))
+            suffix = f" (x{count})" if count > 1 else ""
+            scene_lines.append(f"- {card.name}{suffix}: {(card.description or '').strip()}")
     if scene_lines:
-        blocks.append("## Контекст сцены (используй этих персонажей и предметы)\n" + "\n".join(scene_lines))
+        blocks.append("## Контекст сцены (используй именно этих персонажей и это количество)\n" + "\n".join(scene_lines))
 
     facts = _facts_block("Факты мира (опирайся на них, не выдумывай иное)", lore_facts)
     if facts:

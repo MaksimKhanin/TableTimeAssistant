@@ -272,6 +272,8 @@
                   <input id="llm-memory-episodic_top_k" type="number" min="0"></label>
                 <label class="field"><span class="field-label">RAG-результатов (top-k)</span>
                   <input id="llm-memory-retrieval_top_k" type="number" min="1"></label>
+                <label class="field"><span class="field-label">Мин. сходство RAG (0–1)</span>
+                  <input id="llm-memory-retrieval_min_score" type="number" min="0" max="1" step="0.01"></label>
               </fieldset>
             </div>
           </div>
@@ -404,10 +406,6 @@
             <div class="adv-scene-title">Действующие лица</div>
             <div id="adv-scene-npcs" class="adv-scene-cards"></div>
           </div>
-          <div class="adv-scene-section">
-            <div class="adv-scene-title">Предметы</div>
-            <div id="adv-scene-items" class="adv-scene-cards"></div>
-          </div>
         </aside>
       </div>
     </section>
@@ -494,6 +492,8 @@
             <input id="ai-memory-episodic_top_k" type="number" min="0"></label>
           <label class="field"><span class="field-label">RAG-результатов (top-k)</span>
             <input id="ai-memory-retrieval_top_k" type="number" min="1"></label>
+          <label class="field"><span class="field-label">Мин. сходство RAG (0–1)</span>
+            <input id="ai-memory-retrieval_min_score" type="number" min="0" max="1" step="0.01"></label>
         </fieldset>
       </div>
       <div class="modal-foot">

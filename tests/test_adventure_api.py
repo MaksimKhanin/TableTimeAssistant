@@ -50,7 +50,15 @@ def client(monkeypatch):
         seed_all(s)
         retrieval.reindex(s)
 
-    holder = {"intent": {"search_queries": ["город", "горожане"], "leaves_location": True}}
+    holder = {
+        "intent": {
+            "search_queries": ["город", "горожане"],
+            "leaves_location": True,
+            "location_name": "Импродор",
+            "location_description": "город",
+            "npc_mentions": [{"query": "горожанин", "count": 1}],
+        }
+    }
 
     def fake_client_for(_session, role):
         return _FakeNarrator() if role == "narrator" else _FakeSystem(holder["intent"])
@@ -122,7 +130,20 @@ def test_intro_stream_grounds_location(client):
     assert scene_frame["scene"]["location"]["name"] == "Импродор"
 
 
-def test_message_stream_pins_npc(client):
+def test_message_stream_pins_npc(client, monkeypatch):
+    from grokhanika.adventure import retrieval
+    from grokhanika.db.models import Creature
+
+    real_search = retrieval.semantic_search
+
+    def fake_search(session, query, *, card_types=None, **kwargs):
+        if card_types:
+            card = session.query(Creature).filter(Creature.name == "Горожанин").one()
+            return [{"card": card, "score": 0.9}]
+        return real_search(session, query, card_types=card_types, **kwargs)
+
+    monkeypatch.setattr(retrieval, "semantic_search", fake_search)
+
     c, factory, holder = client
     sid = c.post(
         "/api/adventure/start",

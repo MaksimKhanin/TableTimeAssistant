@@ -9,6 +9,7 @@ API-слой превращает в SSE-кадры. Сам бой ведёт ``
 """
 from __future__ import annotations
 
+from collections import Counter
 from typing import Iterator, Optional
 
 from sqlalchemy import select
@@ -17,12 +18,10 @@ from sqlalchemy.orm import Session
 from ..db.models import AdventureMessage, AdventureSession, Card, Character, LoreEntry
 from ..enums import CardType
 from . import combat_bridge, config, memory, narrator, prompts, scene
-from .intent import Intent, analyze_intent
+from .intent import Intent, analyze_intent, analyze_opening
 from .llm import LLMError, client_for
 
-# типы карточек, которые при заземлении становятся «предметами» сцены
-_ITEM_TYPES = {CardType.ITEM.value, CardType.WEAPON.value, CardType.ARMOR.value}
-_NPC_TYPES = {CardType.CREATURE.value, CardType.CHARACTER.value}
+_NPC_TYPES = (CardType.CREATURE.value, CardType.CHARACTER.value)
 # сторона противников в боевом движке (см. ``web/simulation.py`` ENEMY_SIDE)
 _ENEMY_SIDE = "enemy"
 
@@ -66,8 +65,12 @@ def start_adventure(
 # ───────────────────────── заземление (RAG) ─────────────────────────
 
 
-def _search(session: Session, queries: list[str], top_k: int) -> list[dict]:
-    """Семантический поиск по нескольким запросам, слитый по карточке (best-effort)."""
+def _search_lore(session: Session, queries: list[str], top_k: int) -> list[LoreEntry]:
+    """Семантический поиск ФАКТОВ МИРА (лора) по нескольким запросам, слитый по карточке.
+
+    Локация и NPC сцены больше не выводятся отсюда (см. :mod:`adventure.intent`) —
+    это только справочные факты для блока «Факты мира» в промте ГМ.
+    """
     try:
         from . import retrieval
     except Exception:  # noqa: BLE001
@@ -75,7 +78,7 @@ def _search(session: Session, queries: list[str], top_k: int) -> list[dict]:
     merged: dict[int, dict] = {}
     for query in queries:
         try:
-            hits = retrieval.semantic_search(session, query, top_k=top_k)
+            hits = retrieval.semantic_search(session, query, entity_types=(retrieval.ENTITY_LORE,), top_k=top_k)
         except Exception:  # noqa: BLE001 - эмбеддер недоступен → без заземления
             continue
         for hit in hits:
@@ -84,30 +87,36 @@ def _search(session: Session, queries: list[str], top_k: int) -> list[dict]:
             if prev is None or hit["score"] > prev["score"]:
                 merged[card.id] = hit
     results = sorted(merged.values(), key=lambda h: h["score"], reverse=True)
-    return results[:top_k]
+    return [r["card"] for r in results[:top_k]]
 
 
-def _apply_grounding(session: Session, adv: AdventureSession, results: list[dict]) -> list[LoreEntry]:
-    """Закрепить найденные NPC/локации/предметы в сцене; вернуть лор-факты."""
-    lore_facts: list[LoreEntry] = []
-    location_set = adv.current_location_card_id is not None
-    for hit in results:
-        card = hit["card"]
-        if isinstance(card, LoreEntry):
-            if card.category == "location" and not location_set:
-                scene.set_location(session, adv, card)
-                location_set = True
-            else:
-                lore_facts.append(card)
-        elif card.card_type in _NPC_TYPES:
-            # сопартийцев (игровых персонажей) не закрепляем как NPC сцены
-            if getattr(card, "is_player", False):
-                continue
-            scene.pin_card(session, adv, card, scene.KIND_NPC)
-        elif card.card_type in _ITEM_TYPES:
-            scene.pin_card(session, adv, card, scene.KIND_ITEM)
+def _apply_npc_mentions(session: Session, adv: AdventureSession, mentions: list[dict]) -> None:
+    """Закрепить в сцене NPC, явно упомянутых интентом, с заданным количеством.
+
+    Количество решает интент-анализатор (детерминированно, temperature=0) —
+    ГМ рассказывает именно про столько закреплённых NPC, сколько тут выставлено,
+    а не выдумывает число самостоятельно.
+    """
+    try:
+        from . import retrieval
+    except Exception:  # noqa: BLE001
+        return
+    for mention in mentions:
+        query = (mention.get("query") or "").strip()
+        if not query:
+            continue
+        count = max(1, int(mention.get("count") or 1))
+        try:
+            hits = retrieval.semantic_search(session, query, card_types=_NPC_TYPES, top_k=1)
+        except Exception:  # noqa: BLE001 - эмбеддер недоступен → пропускаем упоминание
+            continue
+        if not hits:
+            continue
+        card = hits[0]["card"]
+        if getattr(card, "is_player", False):
+            continue  # сопартийцев не закрепляем как NPC сцены
+        scene.pin_card(session, adv, card, scene.KIND_NPC, count=count)
     session.flush()
-    return lore_facts
 
 
 # ───────────────────────── вводная ГМ ─────────────────────────
@@ -118,17 +127,22 @@ def stream_intro(session: Session, adv: AdventureSession) -> Iterator[dict]:
     mem_cfg = config.get_section(session, "memory")
     embed_model = config.get_section(session, "embedder")["model"]
     narrator_client = client_for(session, "narrator")
+    system_client = client_for(session, "system")
+
+    # локация/начальные NPC решаются детерминированно по завязке и цели, а не RAG-поиском
+    opening = analyze_opening(system_client, adv.description, adv.goal)
+    if opening.location_name:
+        scene.set_location_text(session, adv, opening.location_name, opening.location_description)
+    _apply_npc_mentions(session, adv, opening.npc_mentions)
 
     seed_query = f"{adv.description}. {adv.goal}".strip(". ")
-    results = _search(session, [seed_query] if seed_query else [], int(mem_cfg["retrieval_top_k"]))
-    lore_facts = _apply_grounding(session, adv, results)
+    lore_facts = _search_lore(session, [seed_query] if seed_query else [], int(mem_cfg["retrieval_top_k"]))
 
     active = scene.collect_active(adv)
     context = prompts.build_context_block(
         running_summary="",
         location=active["location"],
         npcs=active["npcs"],
-        items=active["items"],
         lore_facts=lore_facts,
         episodic=[],
         enrichment="",
@@ -180,21 +194,25 @@ def play_turn(
     session.flush()
     yield {"type": "intent", "intent": intent.to_dict()}
 
-    # 3. зачистка сцены при уходе из локации
+    # 3. уход из локации: зачистить прежних NPC и (если задано) сменить локацию
     if intent.leaves_location:
         scene.clear_npcs(session, adv)
+        if intent.location_name:
+            scene.set_location_text(session, adv, intent.location_name, intent.location_description)
 
-    # 4. заземление (RAG): закрепить найденные сущности
+    # 4. NPC, явно упомянутые интентом (с детерминированным количеством) + факты мира
+    _apply_npc_mentions(session, adv, intent.npc_mentions)
     queries = intent.search_queries or [text]
-    results = _search(session, queries, int(mem_cfg["retrieval_top_k"]))
-    lore_facts = _apply_grounding(session, adv, results)
+    lore_facts = _search_lore(session, queries, int(mem_cfg["retrieval_top_k"]))
 
     # 4b. подбор противников из каталога, если игрок инициирует бой
     enemy_cards: list[Card] = []
     if intent.combat_initiation:
         enemy_cards = combat_bridge.select_enemies(session, adv, intent)
-        for card in enemy_cards:
-            scene.pin_card(session, adv, card, scene.KIND_NPC)
+        counts = Counter(c.id for c in enemy_cards)
+        by_id = {c.id: c for c in enemy_cards}
+        for card_id, count in counts.items():
+            scene.pin_card(session, adv, by_id[card_id], scene.KIND_NPC, count=count)
 
     # 5. эпизодическая память + окно
     window_msgs = memory.window(adv, int(mem_cfg["window_messages"]))
@@ -210,7 +228,6 @@ def play_turn(
         running_summary=adv.running_summary,
         location=active["location"],
         npcs=active["npcs"],
-        items=active["items"],
         lore_facts=lore_facts,
         episodic=episodic,
         enrichment=prompts.enrichment_for(intent, combat_ready=bool(enemy_cards)),
@@ -263,7 +280,6 @@ def resolve_combat(
         running_summary=adv.running_summary,
         location=active["location"],
         npcs=active["npcs"],
-        items=active["items"],
         lore_facts=[],
         episodic=[],
         enrichment="",

@@ -207,16 +207,22 @@ def semantic_search(
     card_types: Optional[Sequence[str]] = None,
     top_k: int = 5,
     model_name: Optional[str] = None,
+    min_score: Optional[float] = None,
 ) -> list[dict]:
     """Найти карточки/лор, близкие к запросу. Возвращает ``[{card, score}]``.
 
     ``card_types`` дополнительно фильтрует по типу карточки (например, только
-    существа/персонажи для NPC-сцены).
+    существа/персонажи для NPC-сцены). ``min_score`` отсекает слабые совпадения
+    (по умолчанию — порог из конфига ``memory.retrieval_min_score``): без него
+    поиск всегда возвращал топ-k результатов, даже когда реальное сходство было
+    низким, из-за чего в сцену попадали случайные, не относящиеся к делу карточки.
     """
     from . import embeddings as emb
 
     if not query.strip():
         return []
+    if min_score is None:
+        min_score = float(config.get_section(session, "memory")["retrieval_min_score"])
     model = _embed_model(session, model_name)
     qvec = emb.embed_one(query, model, kind="query")
     # берём с запасом — после гидрации может отсеяться по card_types
@@ -231,6 +237,8 @@ def semantic_search(
     results: list[dict] = []
     allowed = set(card_types) if card_types else None
     for _etype, eid, score in hits:
+        if score < min_score:
+            break  # hits отсортированы по убыванию — дальше только слабее
         card = by_id.get(eid)
         if card is None:
             continue

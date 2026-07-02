@@ -485,9 +485,10 @@ class AdventureSession(Base):
     status: Mapped[str] = mapped_column(String(12), default="setup")  # setup|active|ended
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    current_location_card_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("cards.id"), default=None
-    )
+    # локация — свободный текст (имя + описание), не привязана к карточкам каталога:
+    # её решает интент-анализатор (детерминированно, temperature=0), а не RAG-поиск
+    current_location_name: Mapped[str] = mapped_column(String(200), default="")
+    current_location_description: Mapped[str] = mapped_column(String, default="")
     system_prompt: Mapped[str] = mapped_column(String, default="")  # снимок промта ГМ
     # бегущая сводка кампании (компактинг) + докуда уже свёрнуто
     running_summary: Mapped[str] = mapped_column(String, default="")
@@ -539,7 +540,8 @@ class ScenePin(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     session_id: Mapped[int] = mapped_column(ForeignKey("adventure_sessions.id"))
     card_id: Mapped[int] = mapped_column(ForeignKey("cards.id"))
-    kind: Mapped[str] = mapped_column(String(12))  # npc | location | item
+    kind: Mapped[str] = mapped_column(String(12))  # npc
+    count: Mapped[int] = mapped_column(Integer, default=1)  # сколько таких NPC в кадре
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     session: Mapped["AdventureSession"] = relationship(back_populates="pins")
