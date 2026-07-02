@@ -31,12 +31,17 @@ ENTITY_TURN = "turn"
 
 
 def card_text(card: Card) -> str:
-    """Текст карточки для векторизации: имя + описание (+ категория лора)."""
+    """Текст карточки для векторизации: имя + описание (+ поля лора)."""
     parts = [card.name or ""]
     if isinstance(card, LoreEntry) and card.category:
         parts.append(f"[{card.category}]")
     if card.description:
         parts.append(card.description)
+    if isinstance(card, LoreEntry):
+        if card.when_to_apply:
+            parts.append(f"Применять: {card.when_to_apply}")
+        if card.notes:
+            parts.append(f"Нюанс: {card.notes}")
     return " — ".join(p for p in parts if p)
 
 

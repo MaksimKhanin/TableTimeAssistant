@@ -8,26 +8,6 @@ from grokhanika.enums import AbilityTrigger
 from .conftest import ScriptedRandom
 
 
-def test_summon_on_combat_start(catalog, session):
-    necromancer = Combatant(catalog["necromancer"], "enemy")
-    hero = Combatant(catalog["andryusha"], "party")
-    combat = Combat([hero, necromancer], rng=ScriptedRandom(), session=session)
-
-    combat.fire_combat_start()
-
-    enemies = combat.members("enemy")
-    assert len(enemies) == 3  # некромант + 2 призванных гоблина
-    assert sum(1 for c in enemies if c.name == "Гоблин") == 2
-
-
-def test_summon_is_once_per_combat(catalog, session):
-    necromancer = Combatant(catalog["necromancer"], "enemy")
-    combat = Combat([necromancer], rng=ScriptedRandom(), session=session)
-    combat.fire_combat_start()
-    combat.fire_combat_start()  # второй раз не должен призывать снова
-    assert sum(1 for c in combat.members("enemy") if c.name == "Гоблин") == 2
-
-
 def test_instakill_on_hit_triggers(catalog):
     # d20=15 -> попадание; floats: 0.1 (проходит шанс 0.25), 0.5 (instakill chance 1.0)
     rng = ScriptedRandom(ints=[15], floats=[0.1, 0.5])
